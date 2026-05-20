@@ -65,23 +65,27 @@
   .sync-all-btn { border: 1px solid var(--blue-mid); background: none; border-radius: var(--radius); padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--blue); font-weight: 500; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }
   .sync-all-btn:hover { background: var(--blue-light); }
   .sync-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .task-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-  .task-item { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg2); transition: all 0.15s; }
-  .task-item.done { opacity: 0.45; }
-  .task-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border2); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .task-table { width: 100%; border-collapse: collapse; }
+  .task-table .col-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px 6px; border-bottom: 1px solid var(--border); }
+  .task-table .col-head-time { width: 72px; }
+  .task-table .col-head-task { }
+  .task-table .col-head-actions { width: 60px; text-align: right; }
+  .task-row { border-bottom: 1px solid var(--border); transition: background 0.12s; }
+  .task-row:last-child { border-bottom: none; }
+  .task-row:hover { background: var(--bg2); }
+  .task-row.done { opacity: 0.4; }
+  .td-time { padding: 9px 10px; vertical-align: middle; width: 72px; }
+  .td-task { padding: 9px 6px; vertical-align: middle; }
+  .td-actions { padding: 9px 10px; vertical-align: middle; text-align: right; white-space: nowrap; }
+  .task-check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border2); cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; vertical-align: middle; }
   .task-check.checked { background: var(--teal); border-color: var(--teal); }
-  .task-check i { font-size: 12px; color: white; display: none; }
+  .task-check i { font-size: 11px; color: white; display: none; }
   .task-check.checked i { display: block; }
-  .task-body { flex: 1; min-width: 0; }
-  .task-title { font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .task-item.done .task-title { text-decoration: line-through; }
-  .task-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
-  .task-time { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 3px; }
   .badge { font-size: 10px; padding: 1px 7px; border-radius: 10px; }
   .badge-repeat { color: var(--teal-dark); background: var(--teal-light); }
-  .badge-synced { color: var(--blue); background: var(--blue-light); display: flex; align-items: center; gap: 3px; }
-  .task-actions { display: flex; gap: 2px; flex-shrink: 0; }
-  .icon-btn { border: none; background: none; cursor: pointer; color: var(--text2); font-size: 15px; padding: 4px 6px; border-radius: 5px; opacity: 0.5; transition: all 0.15s; }
+  .badge-synced { color: var(--blue); background: var(--blue-light); display: inline-flex; align-items: center; gap: 3px; }
+  .task-actions { display: inline-flex; gap: 2px; }
+  .icon-btn { border: none; background: none; cursor: pointer; color: var(--text2); font-size: 14px; padding: 3px 5px; border-radius: 5px; opacity: 0.4; transition: all 0.15s; }
   .icon-btn:hover { opacity: 1; background: var(--bg3); }
   .icon-btn.cal { color: var(--blue); opacity: 0.7; }
   .icon-btn.cal:hover { opacity: 1; background: var(--blue-light); }
@@ -125,6 +129,13 @@
   .btn-save { border: none; background: var(--teal); color: white; border-radius: var(--radius); padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); border-radius: var(--radius); padding: 10px 18px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 300; white-space: nowrap; max-width: 90vw; text-align: center; }
   .toast.show { opacity: 1; }
+  .task-title-input { border: none; background: transparent; font-size: 14px; color: var(--text); font-family: inherit; outline: none; width: 100%; padding: 0; }
+  .task-title-input:focus { border-bottom: 1px solid var(--teal); }
+  .task-row.done .task-title-input { text-decoration: line-through; }
+  .task-time-input { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: var(--font-mono, monospace); outline: none; width: 58px; padding: 0; }
+  .task-time-input:focus { border-bottom: 1px solid var(--teal); }
+  .time-na { font-size: 12px; color: var(--text3); font-style: italic; }
+  .icon-btn.edit { color: var(--teal); }
   @media (max-width: 500px) {
     .container { padding: 1rem 0.75rem 4rem; }
     .header h1 { font-size: 18px; }
@@ -165,7 +176,7 @@
         <i class="ti ti-calendar-up"></i> 一键同步当日
       </button>
     </div>
-    <div class="task-list" id="task-list"></div>
+    <div id="task-list" style="padding:0"></div>
   </div>
 
   <!-- 输入框 -->
@@ -440,44 +451,99 @@ function renderWeekStrip() {
 function renderTasks() {
   const list = document.getElementById('task-list');
   const label = document.getElementById('day-section-label');
-  const tasks4day = getTasksForDate(selectedDate);
+  let tasks4day = getTasksForDate(selectedDate);
   const isToday = dateKey(selectedDate) === dateKey(todayDate());
   label.textContent = isToday ? '今日事项' : `${selectedDate.getMonth()+1}月${selectedDate.getDate()}日事项`;
   if (!tasks4day.length) {
     list.innerHTML = `<div class="empty-state"><i class="ti ti-calendar-off"></i>暂无待办事项</div>`;
     return;
   }
-  list.innerHTML = '';
+  // Sort: timed tasks first (ascending), then NA tasks
+  tasks4day = [...tasks4day].sort((a, b) => {
+    if (a.time && b.time) return a.time.localeCompare(b.time);
+    if (a.time) return -1;
+    if (b.time) return 1;
+    return 0;
+  });
+  const table = document.createElement('table');
+  table.className = 'task-table';
+  table.innerHTML = `<thead><tr>
+    <th class="col-head col-head-time">时间</th>
+    <th class="col-head col-head-task">事项</th>
+    <th class="col-head col-head-actions"></th>
+  </tr></thead>`;
+  const tbody = document.createElement('tbody');
   tasks4day.forEach(task => {
-    const div = document.createElement('div');
-    div.className = 'task-item' + (task.done ? ' done' : '');
+    const tr = document.createElement('tr');
+    tr.className = 'task-row' + (task.done ? ' done' : '');
     const calIcon = task.gcalId
       ? `<button class="icon-btn cal" disabled title="已同步"><i class="ti ti-calendar-check"></i></button>`
       : accessToken
         ? `<button class="icon-btn cal sync-one" title="同步到 Google Calendar"><i class="ti ti-calendar-plus"></i></button>`
         : '';
-    div.innerHTML = `
-      <div class="task-check ${task.done ? 'checked' : ''}" data-id="${task.id}" data-repid="${task.repeatId||''}">
-        <i class="ti ti-check"></i>
-      </div>
-      <div class="task-body">
-        <div class="task-title">${escHtml(task.title)}</div>
-        <div class="task-meta">
-          ${task.time ? `<span class="task-time"><i class="ti ti-clock" style="font-size:10px"></i>${task.time}</span>` : ''}
-          ${task.repeat ? '<span class="badge badge-repeat">每周循环</span>' : ''}
-          ${task.gcalId ? '<span class="badge badge-synced"><i class="ti ti-brand-google" style="font-size:9px"></i>已同步</span>' : ''}
+    tr.innerHTML = `
+      <td class="td-time">
+        <input class="task-time-input" value="${task.time||''}" placeholder="NA">
+      </td>
+      <td class="td-task">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="task-check ${task.done ? 'checked' : ''}"><i class="ti ti-check"></i></div>
+          <div style="flex:1;min-width:0">
+            <input class="task-title-input" value="${escHtml(task.title)}">
+            <div style="display:flex;gap:5px;margin-top:2px;flex-wrap:wrap">
+              ${task.repeat ? '<span class="badge badge-repeat">每周循环</span>' : ''}
+              ${task.gcalId ? '<span class="badge badge-synced"><i class="ti ti-brand-google" style="font-size:9px"></i>已同步</span>' : ''}
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="task-actions">
-        ${calIcon}
-        <button class="icon-btn del-btn" data-id="${task.id}" data-repid="${task.repeatId||''}" title="删除"><i class="ti ti-trash"></i></button>
-      </div>`;
-    list.appendChild(div);
-    div.querySelector('.task-check').onclick = () => toggleDone(task.id, task.repeatId);
-    div.querySelector('.del-btn').onclick = () => deleteTask(task.id, task.repeatId);
-    const sb = div.querySelector('.sync-one');
+      </td>
+      <td class="td-actions">
+        <div class="task-actions">
+          ${calIcon}
+          <button class="icon-btn del-btn" title="删除"><i class="ti ti-trash"></i></button>
+        </div>
+      </td>`;
+    tbody.appendChild(tr);
+    tr.querySelector('.task-check').onclick = () => toggleDone(task.id, task.repeatId);
+    tr.querySelector('.del-btn').onclick = () => deleteTask(task.id, task.repeatId);
+    const sb = tr.querySelector('.sync-one');
     if (sb) sb.onclick = () => handleSyncOne(sb, task);
+    // Inline edit: title
+    const titleInput = tr.querySelector('.task-title-input');
+    titleInput.onchange = () => updateTask(task.id, task.repeatId, 'title', titleInput.value.trim());
+    // Inline edit: time
+    const timeInput = tr.querySelector('.task-time-input');
+    timeInput.onchange = () => {
+      const v = timeInput.value.trim().toUpperCase();
+      if (v === '' || v === 'NA') {
+        updateTask(task.id, task.repeatId, 'time', null);
+        renderTasks();
+      } else if (/^\d{1,2}:\d{2}$/.test(v)) {
+        updateTask(task.id, task.repeatId, 'time', v);
+        renderTasks();
+      } else {
+        showToast('时间格式：09:30，或留空显示 NA', 'err');
+        timeInput.value = task.time || '';
+      }
+    };
   });
+  table.appendChild(tbody);
+  list.innerHTML = '';
+  list.appendChild(table);
+}
+
+function updateTask(id, repeatId, field, value) {
+  const key = dateKey(selectedDate);
+  if (repeatId) {
+    const rt = repeatTasks.find(r => r.id === repeatId);
+    if (rt) rt[field] = value;
+  } else {
+    if (!tasks[key]) tasks[key] = [];
+    const t = tasks[key].find(t => t.id === id);
+    if (t) t[field] = value;
+  }
+  saveLocal();
+  renderWeekStrip();
 }
 
 function renderAll() {
@@ -485,7 +551,7 @@ function renderAll() {
   renderTasks();
   const d = selectedDate;
   document.getElementById('today-label').textContent =
-    `${d.getFullYear()}年${MONTHS_CN[d.getMonth()]}月${d.getDate()}日 · 周${DAYS_CN[d.getDay()]}`;
+    `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 · 周${DAYS_CN[d.getDay()]}`;
 }
 
 function escHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
