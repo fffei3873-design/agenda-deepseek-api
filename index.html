@@ -276,15 +276,18 @@
 <div class="login-overlay" id="login-overlay">
   <div class="login-box">
     <h2>我的日程</h2>
-    <p>输入邮箱，我们发送一个登录链接给你，无需密码</p>
+    <p id="login-desc">输入邮箱，收到6位验证码后填入即可登录</p>
     <input type="email" id="login-email" placeholder="输入你的邮箱" style="width:100%;border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;font-size:14px;background:var(--bg2);color:var(--text);outline:none;margin-bottom:10px;font-family:inherit">
-    <button id="magic-link-btn" style="width:100%;padding:11px;border-radius:var(--radius);border:none;background:var(--teal);color:white;font-size:14px;font-weight:600;cursor:pointer">
-      发送登录链接
-    </button>
-    <div id="login-sent" style="display:none;margin-top:12px;font-size:13px;color:var(--teal-dark);background:var(--teal-light);padding:10px;border-radius:var(--radius);line-height:1.6">
-      ✅ 链接已发送！请去邮箱点击链接完成登录
+    <div id="otp-row" style="display:none;margin-bottom:10px">
+      <input type="text" id="login-otp" placeholder="输入6位验证码" maxlength="6" style="width:100%;border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;font-size:18px;letter-spacing:6px;text-align:center;background:var(--bg2);color:var(--text);outline:none;font-family:monospace">
     </div>
-    <div id="login-err" style="display:none;margin-top:10px;font-size:13px;color:#a32d2d"></div>
+    <button id="magic-link-btn" style="width:100%;padding:11px;border-radius:var(--radius);border:none;background:var(--teal);color:white;font-size:14px;font-weight:600;cursor:pointer">
+      发送验证码
+    </button>
+    <div id="login-sent" style="display:none;margin-top:10px;font-size:13px;color:var(--teal-dark);background:var(--teal-light);padding:10px;border-radius:var(--radius);line-height:1.6">
+      ✅ 验证码已发送，请查收邮件（也可能在垃圾箱）
+    </div>
+    <div id="login-err" style="display:none;margin-top:10px;font-size:13px;color:#a32d2d;padding:8px;background:var(--red-light);border-radius:var(--radius)"></div>
   </div>
 </div>
 
@@ -322,32 +325,37 @@ function loadLocal() {
   try { repeatTasks = JSON.parse(localStorage.getItem('repeat_tasks_v2') || '[]'); } catch(e) { repeatTasks = []; }
 }
 function saveLocal() {
+  // 立即写本地，UI 不等待
   localStorage.setItem('tasks_v2', JSON.stringify(tasks));
   localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks));
-  // 云同步（防抖 1.5s）
+  // 后台静默同步，防抖 2s，不阻塞任何操作
   if (_currentUser) {
     clearTimeout(_syncTimer);
-    _syncTimer = setTimeout(() => syncToCloud(), 1500);
+    _syncTimer = setTimeout(() => syncToCloud().catch(() => {}), 2000);
   }
 }
 
 async function syncToCloud() {
   if (!_currentUser) return;
   const uid = _currentUser.id;
-  const si = document.getElementById('sync-indicator');
-  si.classList.add('show');
+  // 快照当前数据，避免异步期间数据变化
+  const taskSnap = JSON.parse(JSON.stringify(tasks));
+  const repeatSnap = JSON.parse(JSON.stringify(repeatTasks));
   try {
-    // 每个用户用自己的 user_id 行，RLS 确保只能读写自己的数据
     await Promise.all([
       _sb.from('tasks')
-        .upsert({ user_id: uid, data: tasks, updated_at: new Date().toISOString() },
+        .upsert({ user_id: uid, data: taskSnap, updated_at: new Date().toISOString() },
           { onConflict: 'user_id' }),
       _sb.from('repeat_tasks')
-        .upsert({ user_id: uid, data: repeatTasks, updated_at: new Date().toISOString() },
+        .upsert({ user_id: uid, data: repeatSnap, updated_at: new Date().toISOString() },
           { onConflict: 'user_id' })
     ]);
-  } catch(e) { console.error('sync error', e); }
-  si.classList.remove('show');
+    // 同步成功，悄悄更新时间戳
+    localStorage.setItem('cloud_updated', new Date().toISOString());
+  } catch(e) {
+    // 静默失败，下次操作时会重试
+    console.warn('sync failed, will retry:', e.message);
+  }
 }
 
 async function loadFromCloud() {
@@ -402,37 +410,75 @@ async function onLogin(user) {
   si.classList.add('show');
   const fromCloud = await loadFromCloud();
   si.classList.remove('show');
+  // 登录后把本地未同步的数据推上去
+  if (!fromCloud && (Object.keys(tasks).length > 0 || repeatTasks.length > 0)) {
+    syncToCloud().catch(() => {});
+  }
   if (fromCloud) renderAll();
   // 如有本地未同步数据，推送到云端
   else if (Object.keys(tasks).length > 0 || repeatTasks.length > 0) syncToCloud();
 }
 
-document.getElementById('magic-link-btn').onclick = async () => {
-  const email = document.getElementById('login-email').value.trim();
-  const errEl = document.getElementById('login-err');
-  errEl.style.display = 'none';
-  if (!email || !email.includes('@')) {
-    errEl.textContent = '请输入有效的邮箱地址';
-    errEl.style.display = 'block';
-    return;
-  }
+(function() {
+  let otpSent = false;
   const btn = document.getElementById('magic-link-btn');
-  btn.disabled = true; btn.textContent = '发送中…';
-  const { error } = await _sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.href }
-  });
-  btn.disabled = false; btn.textContent = '发送登录链接';
-  if (error) {
-    errEl.textContent = '发送失败：' + error.message;
-    errEl.style.display = 'block';
-  } else {
-    document.getElementById('login-sent').style.display = 'block';
+  const emailInput = document.getElementById('login-email');
+  const otpInput = document.getElementById('login-otp');
+  const otpRow = document.getElementById('otp-row');
+  const sentEl = document.getElementById('login-sent');
+  const errEl = document.getElementById('login-err');
+  const desc = document.getElementById('login-desc');
+
+  function showErr(msg) {
+    errEl.textContent = msg; errEl.style.display = 'block';
+    setTimeout(() => errEl.style.display = 'none', 4000);
   }
-};
-document.getElementById('login-email').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('magic-link-btn').click();
-});
+
+  btn.onclick = async () => {
+    errEl.style.display = 'none';
+    if (!otpSent) {
+      // 第一步：发送验证码
+      const email = emailInput.value.trim();
+      if (!email || !email.includes('@')) { showErr('请输入有效的邮箱地址'); return; }
+      btn.disabled = true; btn.textContent = '发送中…';
+      const { error } = await _sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      btn.disabled = false;
+      if (error) {
+        showErr('发送失败：' + (error.message.includes('rate') ? '发送太频繁，请稍后再试' : error.message));
+        btn.textContent = '发送验证码';
+      } else {
+        otpSent = true;
+        sentEl.style.display = 'block';
+        otpRow.style.display = 'block';
+        emailInput.style.opacity = '0.5';
+        emailInput.disabled = true;
+        btn.textContent = '验证并登录';
+        desc.textContent = '验证码已发送，请输入邮件中的6位数字';
+        otpInput.focus();
+      }
+    } else {
+      // 第二步：验证 OTP
+      const email = emailInput.value.trim();
+      const token = otpInput.value.trim();
+      if (token.length !== 6) { showErr('请输入6位验证码'); return; }
+      btn.disabled = true; btn.textContent = '验证中…';
+      const { error } = await _sb.auth.verifyOtp({ email, token, type: 'email' });
+      btn.disabled = false;
+      if (error) {
+        showErr('验证码错误或已过期，请重新发送');
+        btn.textContent = '验证并登录';
+      }
+      // 登录成功由 onAuthStateChange 自动处理
+    }
+  };
+
+  emailInput.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+  otpInput.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+  // 自动提交：输入满6位直接触发
+  otpInput.addEventListener('input', () => {
+    if (otpInput.value.trim().length === 6) btn.click();
+  });
+})();
 document.getElementById('logout-btn').onclick = async () => {
   await _sb.auth.signOut();
   showToast('已退出登录');
