@@ -67,18 +67,25 @@
   .sync-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .task-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .task-table .col-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  .task-table .col-head-cat  { width: 80px; }
-  .task-table .col-head-dl   { width: 90px; }
+  .task-table .col-head-cat  { width: 72px; }
+  .task-table .col-head-dl   { width: 86px; }
   .task-table .col-head-task { }
-  .task-table .col-head-actions { width: 52px; text-align: right; }
+  .task-table .col-head-note { width: 110px; }
+  .task-table .col-head-actions { width: 44px; text-align: right; }
   .task-row { border-bottom: 1px solid var(--border); transition: background 0.12s; }
   .task-row:last-child { border-bottom: none; }
   .task-row:hover { background: var(--bg2); }
   .task-row.done { opacity: 0.4; }
-  .td-cat  { padding: 8px 8px; vertical-align: middle; width: 80px; }
-  .td-dl   { padding: 8px 8px; vertical-align: middle; width: 90px; }
+  .td-cat  { padding: 8px 8px; vertical-align: middle; width: 72px; }
+  .td-dl   { padding: 8px 8px; vertical-align: middle; width: 86px; }
   .td-task { padding: 8px 6px; vertical-align: middle; }
-  .td-actions { padding: 8px 8px; vertical-align: middle; text-align: right; white-space: nowrap; }
+  .td-note { padding: 8px 8px; vertical-align: middle; width: 110px; }
+  .td-actions { padding: 8px 6px; vertical-align: middle; text-align: right; white-space: nowrap; }
+  .note-input { border: none; background: transparent; font-size: 11px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; line-height: 1.5; }
+  .note-input:focus { border-bottom: 1px solid var(--teal); }
+  .note-tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-bottom: 2px; white-space: nowrap; }
+  .note-tag-repeat { background: var(--teal-light); color: var(--teal-dark); }
+  .note-tag-carry  { background: var(--red-light); color: #a32d2d; }
   .cat-input { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; }
   .cat-input:focus { border-bottom: 1px solid var(--teal); }
   .dl-input  { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; }
@@ -294,25 +301,73 @@ function getWeekOfMonth(d) {
   }
   return count;
 }
+function getNthWeekdayOfMonth(d) {
+  const wd = d.getDay(); let count = 0;
+  for (let day = 1; day <= d.getDate(); day++) {
+    if (new Date(d.getFullYear(), d.getMonth(), day).getDay() === wd) count++;
+  }
+  return count;
+}
+function getNthWorkdayOfMonth(d) {
+  let count = 0;
+  for (let day = 1; day <= d.getDate(); day++) {
+    const wd = new Date(d.getFullYear(), d.getMonth(), day).getDay();
+    if (wd !== 0 && wd !== 6) count++;
+  }
+  return count;
+}
+function getWeeksSince(d, startDate) {
+  const msPerWeek = 7 * 24 * 3600 * 1000;
+  return Math.round((d - startDate) / msPerWeek);
+}
+
+function matchesRepeat(rt, d) {
+  const s = parseDateKey(rt.startDate);
+  if (d < s) return false;
+  const type = rt.repeatType || 'weekly';
+  switch (type) {
+    case 'weekly':
+      return d.getDay() === rt.weekday;
+    case 'biweekly':
+      return d.getDay() === rt.weekday && getWeeksSince(d, s) % 2 === 0;
+    case 'monthly-day':
+      return d.getDate() === rt.monthDay;
+    case 'monthly-workday':
+      return d.getDay() !== 0 && d.getDay() !== 6 && getNthWorkdayOfMonth(d) === rt.monthWorkday;
+    case 'monthly-week':
+      return d.getDay() === rt.weekday && getWeekOfMonth(d) === rt.monthWeek;
+    case 'monthly-weekday':
+      return d.getDay() === rt.weekday && getNthWeekdayOfMonth(d) === rt.monthWeek;
+    default:
+      return false;
+  }
+}
+
+function getRepeatLabel(rt) {
+  const type = rt.repeatType || 'weekly';
+  const DAYS = ['周日','周一','周二','周三','周四','周五','周六'];
+  switch(type) {
+    case 'weekly':       return `每周${DAYS[rt.weekday]}循环`;
+    case 'biweekly':     return `每两周${DAYS[rt.weekday]}循环`;
+    case 'monthly-day':  return `每月第${rt.monthDay}天循环`;
+    case 'monthly-workday': return `每月第${rt.monthWorkday}个工作日循环`;
+    case 'monthly-week': return `每月第${rt.monthWeek}周循环`;
+    case 'monthly-weekday': return `每月第${rt.monthWeek}个${DAYS[rt.weekday]}循环`;
+    default: return '循环任务';
+  }
+}
+
 function getTasksForDate(d) {
   const key = dateKey(d);
   const regular = tasks[key] ? [...tasks[key]] : [];
   const repeating = repeatTasks
-    .filter(rt => {
-      const s = parseDateKey(rt.startDate);
-      if (d < s) return false;
-      if (d.getDay() !== rt.weekday) return false;
-      // 如果指定了每月第几周，则额外过滤
-      if (rt.monthWeek) return getWeekOfMonth(d) === rt.monthWeek;
-      return true;
-    })
+    .filter(rt => matchesRepeat(rt, d))
     .map(rt => ({
       id: 'rep_' + rt.id + '_' + dateKey(d),
-      title: rt.title, time: rt.time, done: false,
+      title: rt.title, time: rt.time, done: false, category: rt.category||'', deadline: rt.deadline||'',
       repeat: true, repeatId: rt.id, gcalId: rt.gcalId || null,
-      monthWeek: rt.monthWeek || null
+      repeatLabel: getRepeatLabel(rt)
     }));
-  // merge done state for repeat tasks
   repeating.forEach(rt => {
     const ov = (tasks[key]||[]).find(t => t.id === rt.id);
     if (ov) { rt.done = ov.done; rt.gcalId = ov.gcalId || rt.gcalId; }
@@ -510,9 +565,10 @@ function renderTasks() {
   const table = document.createElement('table');
   table.className = 'task-table';
   table.innerHTML = `<thead><tr>
-    <th class="col-head col-head-cat"><span style="white-space:nowrap">责任方/工作</span><br>归类</th>
+    <th class="col-head col-head-cat">归类</th>
     <th class="col-head col-head-dl">Deadline</th>
     <th class="col-head col-head-task">提醒事项</th>
+    <th class="col-head col-head-note">备注</th>
     <th class="col-head col-head-actions"></th>
   </tr></thead>`;
   const tbody = document.createElement('tbody');
@@ -524,6 +580,14 @@ function renderTasks() {
       : accessToken
         ? `<button class="icon-btn cal sync-one" title="同步到 Google Calendar"><i class="ti ti-calendar-plus"></i></button>`
         : '';
+    // 备注列内容：循环标签 + 结转标签 + 可编辑输入
+    const repeatTag = task.repeatLabel
+      ? `<div class="note-tag note-tag-repeat">${task.repeatLabel}</div>`
+      : '';
+    const carryTag = task.carriedFrom
+      ? `<div class="note-tag note-tag-carry">↩ 结转自${task.carriedDate ? task.carriedDate.slice(5).replace('-','/') : '昨日'}</div>`
+      : '';
+    const noteVal = escHtml(task.note || '');
     tr.innerHTML = `
       <td class="td-cat">
         <input class="cat-input" value="${escHtml(task.category||'')}" placeholder="—">
@@ -534,15 +598,12 @@ function renderTasks() {
       <td class="td-task">
         <div style="display:flex;align-items:center;gap:6px">
           <div class="task-check ${task.done ? 'checked' : ''}"><i class="ti ti-check"></i></div>
-          <div style="flex:1;min-width:0">
-            <input class="task-title-input" value="${escHtml(task.title)}">
-            <div style="display:flex;gap:5px;margin-top:2px;flex-wrap:wrap">
-              ${task.repeat ? `<span class="badge badge-repeat">${task.monthWeek ? '每月第'+task.monthWeek+'周' : '每周'}循环</span>` : ''}
-              ${task.carriedFrom ? `<span class="badge" style="background:var(--red-light);color:#a32d2d;font-size:10px;padding:1px 7px;border-radius:10px">↩ 结转自${task.carriedDate ? task.carriedDate.slice(5).replace('-','/') : '昨日'}</span>` : ''}
-              ${task.gcalId ? '<span class="badge badge-synced"><i class="ti ti-brand-google" style="font-size:9px"></i>已同步</span>' : ''}
-            </div>
-          </div>
+          <input class="task-title-input" style="flex:1;min-width:0" value="${escHtml(task.title)}">
         </div>
+      </td>
+      <td class="td-note">
+        ${repeatTag}${carryTag}
+        <input class="note-input" value="${noteVal}" placeholder="备注/循环条件">
       </td>
       <td class="td-actions">
         <div class="task-actions">
@@ -555,15 +616,30 @@ function renderTasks() {
     tr.querySelector('.del-btn').onclick = () => deleteTask(task.id, task.repeatId);
     const sb = tr.querySelector('.sync-one');
     if (sb) sb.onclick = () => handleSyncOne(sb, task);
-    // 类别编辑
-    const catInput = tr.querySelector('.cat-input');
-    catInput.onchange = () => updateTask(task.id, task.repeatId, 'category', catInput.value.trim());
-    // Deadline 编辑
-    const dlInput = tr.querySelector('.dl-input');
-    dlInput.onchange = () => { updateTask(task.id, task.repeatId, 'deadline', dlInput.value.trim()); renderTasks(); };
-    // 提醒事项编辑
-    const titleInput = tr.querySelector('.task-title-input');
-    titleInput.onchange = () => updateTask(task.id, task.repeatId, 'title', titleInput.value.trim());
+    tr.querySelector('.cat-input').onchange = e => updateTask(task.id, task.repeatId, 'category', e.target.value.trim());
+    tr.querySelector('.dl-input').onchange = e => { updateTask(task.id, task.repeatId, 'deadline', e.target.value.trim()); renderTasks(); };
+    tr.querySelector('.task-title-input').onchange = e => updateTask(task.id, task.repeatId, 'title', e.target.value.trim());
+    // 备注列：如果输入了循环条件，AI 解析后更新；否则保存为普通备注
+    const noteInput = tr.querySelector('.note-input');
+    noteInput.onchange = async () => {
+      const v = noteInput.value.trim();
+      if (!v) { updateTask(task.id, task.repeatId, 'note', ''); return; }
+      // 判断是否像循环条件
+      if (/每|循环|周|月|天|工作日/.test(v)) {
+        noteInput.disabled = true;
+        const repeatInfo = await parseRepeatCondition(v);
+        noteInput.disabled = false;
+        if (repeatInfo) {
+          applyRepeatToTask(task, repeatInfo);
+          renderAll();
+          showToast('循环条件已更新');
+        } else {
+          updateTask(task.id, task.repeatId, 'note', v);
+        }
+      } else {
+        updateTask(task.id, task.repeatId, 'note', v);
+      }
+    };
   });
   table.appendChild(tbody);
   list.innerHTML = '';
@@ -618,6 +694,65 @@ function deleteTask(id, repId) {
   saveLocal(); renderAll();
 }
 
+
+// ── 解析备注列中的循环条件 ────────────────────────
+async function parseRepeatCondition(text) {
+  const { anthropicKey, apiUrl, apiModel } = getConfig();
+  if (!anthropicKey) return null;
+  const prompt = `你是循环条件解析器。将以下循环描述解析为JSON（只返回JSON）：
+输入：「${text}」
+返回：{"repeatType":"weekly|biweekly|monthly-day|monthly-workday|monthly-week|monthly-weekday","weekday":0-6或null,"monthDay":数字或null,"monthWorkday":数字或null,"monthWeek":数字或null}
+示例：
+- "每周一" → repeatType:"weekly",weekday:1
+- "每两周三" → repeatType:"biweekly",weekday:3
+- "每月15号" → repeatType:"monthly-day",monthDay:15
+- "每月第3个工作日" → repeatType:"monthly-workday",monthWorkday:3
+- "每月第2周" → repeatType:"monthly-week",monthWeek:2,weekday:1（周一）
+- "每月第1个周二" → repeatType:"monthly-weekday",monthWeek:1,weekday:2`;
+  try {
+    const resp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + anthropicKey },
+      body: JSON.stringify({ model: apiModel, max_tokens: 100, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await resp.json();
+    const raw = data.choices ? data.choices[0].message.content : '';
+    return JSON.parse(raw.replace(/```json|```/g,'').trim());
+  } catch(e) { return null; }
+}
+
+function applyRepeatToTask(task, repeatInfo) {
+  const startDate = dateKey(selectedDate);
+  if (task.repeatId) {
+    // 更新已有循环任务
+    const rt = repeatTasks.find(r => r.id === task.repeatId);
+    if (rt) {
+      rt.repeatType = repeatInfo.repeatType;
+      rt.weekday = repeatInfo.weekday !== undefined ? repeatInfo.weekday : rt.weekday;
+      rt.monthDay = repeatInfo.monthDay || null;
+      rt.monthWorkday = repeatInfo.monthWorkday || null;
+      rt.monthWeek = repeatInfo.monthWeek || null;
+    }
+  } else {
+    // 普通任务升级为循环任务
+    const key = dateKey(selectedDate);
+    const existing = tasks[key] ? tasks[key].find(t => t.id === task.id) : null;
+    const newRt = {
+      id: task.id,
+      title: task.title, category: task.category||'', deadline: task.deadline||'',
+      time: task.time, startDate,
+      repeatType: repeatInfo.repeatType,
+      weekday: repeatInfo.weekday !== undefined ? repeatInfo.weekday : selectedDate.getDay(),
+      monthDay: repeatInfo.monthDay || null,
+      monthWorkday: repeatInfo.monthWorkday || null,
+      monthWeek: repeatInfo.monthWeek || null
+    };
+    repeatTasks.push(newRt);
+    // 从当天 tasks 中移除（交给循环逻辑接管）
+    if (tasks[key]) tasks[key] = tasks[key].filter(t => t.id !== task.id);
+  }
+  saveLocal();
+}
 // ── AI Parse ──────────────────────────────────────────────
 async function parseWithAI(text) {
   const { anthropicKey } = getConfig();
@@ -626,14 +761,21 @@ async function parseWithAI(text) {
   const prompt = `你是日程解析助手。当前：${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日（周${DAYS_CN[today.getDay()]}）。
 用户输入：「${text}」
 用户可能一次描述多个事项，请全部识别，并自动归类为三列。返回JSON数组（只返回JSON数组，不要有其他内容）：
-[{"title":"提醒事项（核心描述）","category":"责任方/工作归类","deadline":"截止时间","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"weekday":null,"monthWeek":null}]
+[{"title":"提醒事项（核心描述）","category":"归类","deadline":"截止时间","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
 规则：
 - 每个事项单独一个对象，即使只有一个也返回数组
 - title只写核心事项，不含时间和类别信息
-- category：只有用户明确说了责任方或工作归类（如"张三负责"、"市场部"、"项目A"等），才填写；否则填"/"
+- category：只有用户明确说了归类（如"市场部"、"项目A"等），才填写；否则填"/"
 - deadline：只有用户明确说了deadline或截止时间，才填写（YYYY-MM-DD或YYYY-MM-DD HH:MM格式）；否则填"/"
 - time是提醒/事件时间，如"周五下午两点汇报"，date=本周五日期，time="14:00"，deadline="/"（除非用户说"截止"）
-- repeat=true时填weekday(0=周日,1=周一...6=周六)，每月第N周填monthWeek=N
+- repeat说明：用repeatType字段区分循环类型，可选值：
+  * "weekly"：每周周X → weekday=0-6
+  * "biweekly"：每两周周X → weekday=0-6
+  * "monthly-day"：每月第X天 → monthDay=日期数字(1-31)
+  * "monthly-workday"：每月第X个工作日 → monthWorkday=数字
+  * "monthly-week"：每月第X周（自然周） → monthWeek=1-5，weekday=0-6
+  * "monthly-weekday"：每月第X个周Y → monthWeek=X，weekday=Y的数字
+- repeat=true时必须填repeatType，同时填对应的weekday/monthDay/monthWorkday/monthWeek
 - 无日期→今天(${dateKey(today)})；"周四"→本周四对应日期；"5.29"→当年5月29日
 - "3点"=15:00，"下午3点"=15:00，"上午10点"=10:00`;
   const { apiUrl, apiModel } = getConfig();
@@ -677,11 +819,17 @@ async function addTask() {
     if (parsed.repeat) {
       const startDate = parsed.date || dateKey(todayDate());
       const weekday = parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay();
-      repeatTasks.push({ id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'', time: parsed.time, weekday, startDate, monthWeek: parsed.monthWeek || null });
+      const rt = { id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'',
+        time: parsed.time, startDate,
+        repeatType: parsed.repeatType || 'weekly',
+        weekday: parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay(),
+        monthDay: parsed.monthDay || null,
+        monthWorkday: parsed.monthWorkday || null,
+        monthWeek: parsed.monthWeek || null
+      };
+      repeatTasks.push(rt);
       lastDate = parseDateKey(startDate);
-      msgs.push(parsed.monthWeek
-        ? `每月第${parsed.monthWeek}周周${DAYS_CN[weekday]}：${parsed.title}`
-        : `每周${DAYS_CN[weekday]}：${parsed.title}`);
+      msgs.push(getRepeatLabel(rt) + '：' + parsed.title);
     } else {
       const targetDate = parsed.date ? parseDateKey(parsed.date) : todayDate();
       const key = dateKey(targetDate);
