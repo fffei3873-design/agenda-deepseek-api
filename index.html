@@ -285,11 +285,14 @@ function saveConfig(cid, akey, apiUrl, apiModel) {
 
 // ── 每月第N周辅助 ─────────────────────────────────────
 function getWeekOfMonth(d) {
-  // 返回 d 是当月第几个"星期X"（1-based）
-  const first = new Date(d.getFullYear(), d.getMonth(), 1);
-  const firstWeekday = first.getDay();
-  const dayOfMonth = d.getDate();
-  return Math.ceil((dayOfMonth + firstWeekday) / 7);
+  // 返回 d 是当月第几个"同星期X"
+  // 例：7月7日(周二) → 7月第1个周二 → 返回1
+  const weekday = d.getDay();
+  let count = 0;
+  for (let day = 1; day <= d.getDate(); day++) {
+    if (new Date(d.getFullYear(), d.getMonth(), day).getDay() === weekday) count++;
+  }
+  return count;
 }
 function getTasksForDate(d) {
   const key = dateKey(d);
@@ -507,7 +510,7 @@ function renderTasks() {
   const table = document.createElement('table');
   table.className = 'task-table';
   table.innerHTML = `<thead><tr>
-    <th class="col-head col-head-cat">类别</th>
+    <th class="col-head col-head-cat">责任方/工作归类</th>
     <th class="col-head col-head-dl">Deadline</th>
     <th class="col-head col-head-task">提醒事项</th>
     <th class="col-head col-head-actions"></th>
@@ -623,12 +626,13 @@ async function parseWithAI(text) {
   const prompt = `你是日程解析助手。当前：${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日（周${DAYS_CN[today.getDay()]}）。
 用户输入：「${text}」
 用户可能一次描述多个事项，请全部识别，并自动归类为三列。返回JSON数组（只返回JSON数组，不要有其他内容）：
-[{"title":"提醒事项（核心描述）","category":"类别（如工作/学习/生活/会议/健康，无法判断则空字符串）","deadline":"截止时间（YYYY-MM-DD HH:MM格式，仅有日期则YYYY-MM-DD，无则空字符串）","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"weekday":null,"monthWeek":null}]
+[{"title":"提醒事项（核心描述）","category":"责任方/工作归类","deadline":"截止时间","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"weekday":null,"monthWeek":null}]
 规则：
 - 每个事项单独一个对象，即使只有一个也返回数组
 - title只写核心事项，不含时间和类别信息
-- category从语义推断，如"开组会"→工作，"买菜"→生活，"背单词"→学习
-- deadline是deadline，time是提醒时间；如"周五下午两点汇报"，deadline="本周五日期 14:00"，date=本周五日期，time="14:00"
+- category：只有用户明确说了责任方或工作归类（如"张三负责"、"市场部"、"项目A"等），才填写；否则填"/"
+- deadline：只有用户明确说了deadline或截止时间，才填写（YYYY-MM-DD或YYYY-MM-DD HH:MM格式）；否则填"/"
+- time是提醒/事件时间，如"周五下午两点汇报"，date=本周五日期，time="14:00"，deadline="/"（除非用户说"截止"）
 - repeat=true时填weekday(0=周日,1=周一...6=周六)，每月第N周填monthWeek=N
 - 无日期→今天(${dateKey(today)})；"周四"→本周四对应日期；"5.29"→当年5月29日
 - "3点"=15:00，"下午3点"=15:00，"上午10点"=10:00`;
