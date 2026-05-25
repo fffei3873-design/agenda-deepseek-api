@@ -65,18 +65,28 @@
   .sync-all-btn { border: 1px solid var(--blue-mid); background: none; border-radius: var(--radius); padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--blue); font-weight: 500; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }
   .sync-all-btn:hover { background: var(--blue-light); }
   .sync-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .task-table { width: 100%; border-collapse: collapse; }
-  .task-table .col-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px 6px; border-bottom: 1px solid var(--border); }
-  .task-table .col-head-time { width: 72px; }
+  .task-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .task-table .col-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .task-table .col-head-cat  { width: 80px; }
+  .task-table .col-head-dl   { width: 90px; }
   .task-table .col-head-task { }
-  .task-table .col-head-actions { width: 60px; text-align: right; }
+  .task-table .col-head-actions { width: 52px; text-align: right; }
   .task-row { border-bottom: 1px solid var(--border); transition: background 0.12s; }
   .task-row:last-child { border-bottom: none; }
   .task-row:hover { background: var(--bg2); }
   .task-row.done { opacity: 0.4; }
-  .td-time { padding: 9px 10px; vertical-align: middle; width: 72px; }
-  .td-task { padding: 9px 6px; vertical-align: middle; }
-  .td-actions { padding: 9px 10px; vertical-align: middle; text-align: right; white-space: nowrap; }
+  .td-cat  { padding: 8px 8px; vertical-align: middle; width: 80px; }
+  .td-dl   { padding: 8px 8px; vertical-align: middle; width: 90px; }
+  .td-task { padding: 8px 6px; vertical-align: middle; }
+  .td-actions { padding: 8px 8px; vertical-align: middle; text-align: right; white-space: nowrap; }
+  .cat-input { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; }
+  .cat-input:focus { border-bottom: 1px solid var(--teal); }
+  .dl-input  { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; }
+  .dl-input:focus { border-bottom: 1px solid var(--teal); }
+  .mic-btn { border: none; background: none; cursor: pointer; color: var(--text2); font-size: 18px; padding: 4px 6px; border-radius: var(--radius); opacity: 0.5; transition: all 0.15s; flex-shrink: 0; }
+  .mic-btn:hover { opacity: 1; background: var(--bg2); }
+  .mic-btn.recording { color: var(--red); opacity: 1; animation: pulse-mic 0.8s infinite; }
+  @keyframes pulse-mic { 0%,100%{opacity:1} 50%{opacity:0.4} }
   .task-check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border2); cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; vertical-align: middle; }
   .task-check.checked { background: var(--teal); border-color: var(--teal); }
   .task-check i { font-size: 11px; color: white; display: none; }
@@ -164,7 +174,7 @@
   <!-- AI 配置状态栏 -->
   <div class="gcal-card" id="gcal-card">
     <i class="ti ti-sparkles" style="font-size:18px;color:var(--teal);flex-shrink:0"></i>
-    <span id="gcal-status-text">配置DeepSeek API Key 以启用自然语言输入</span>
+    <span id="gcal-status-text">配置 AI 解析以启用自然语言输入</span>
     <button class="gcal-btn connect" id="gcal-main-btn">配置 API</button>
   </div>
 
@@ -182,8 +192,9 @@
   <!-- 输入框 -->
   <div class="input-card">
     <div class="input-row">
-      <i class="ti ti-sparkles"></i>
-      <input type="text" id="task-input" placeholder="输入任意描述，如"5.29号3点交论文"或"每周一开组会"…">
+      <i class="ti ti-sparkles" style="flex-shrink:0"></i>
+      <input type="text" id="task-input" placeholder="输入或语音描述，如"周四写总结周五下午两点汇报"…">
+      <button class="mic-btn" id="mic-btn" title="语音输入"><i class="ti ti-microphone"></i></button>
       <button class="add-btn" id="send-btn">添加</button>
     </div>
     <div class="status-bar" id="ai-status"></div>
@@ -195,16 +206,24 @@
 <div class="config-overlay" id="config-overlay">
   <div class="config-box">
     <h2>配置 AI 解析</h2>
-    <p>填入DeepSeek API Key，用于识别"5月29号3点交论文"这样的自然语言描述。</p>
-    <ol>
-      <li>前往 <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com/api_keys</a> 并登录</li>
-      <li>点击 <strong>创建 API Key</strong>，名称随意填</li>
-      <li>复制生成的 Key 粘贴到下方</li>
-    </ol>
+    <p>支持任何兼容 OpenAI 格式的 API，如 DeepSeek、豆包、Moonshot、GPT 等。</p>
     <input type="text" id="client-id-input" style="display:none">
-    <label>DeepSeek API Key</label>
-    <input type="password" id="anthropic-key-input" placeholder="填入你的DeepSeek API Key">
-    <p style="color:var(--text3);font-size:11px;margin-top:-6px;margin-bottom:12px">Key 仅存储在你的浏览器本地，不会上传到任何服务器。</p>
+    <label>API 地址</label>
+    <input type="text" id="api-url-input" placeholder="https://api.deepseek.com/chat/completions">
+    <label>模型名称</label>
+    <input type="text" id="api-model-input" placeholder="deepseek-chat">
+    <label>API Key</label>
+    <input type="password" id="anthropic-key-input" placeholder="sk-...">
+    <p style="color:var(--text3);font-size:11px;margin-top:-6px;margin-bottom:12px">以上信息仅存储在你的浏览器本地，不会上传到任何服务器。</p>
+    <details style="margin-bottom:12px">
+      <summary style="font-size:12px;color:var(--text2);cursor:pointer;user-select:none">常用平台参考 ▸</summary>
+      <table style="font-size:11px;color:var(--text2);margin-top:8px;border-collapse:collapse;width:100%">
+        <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;font-weight:600">DeepSeek</td><td style="padding:4px 6px;font-family:monospace">api.deepseek.com/chat/completions</td><td style="padding:4px 6px;font-family:monospace">deepseek-chat</td></tr>
+        <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;font-weight:600">豆包</td><td style="padding:4px 6px;font-family:monospace">ark.cn-beijing.volces.com/api/v3/chat/completions</td><td style="padding:4px 6px;font-family:monospace">doubao-lite-4k-240828</td></tr>
+        <tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;font-weight:600">Moonshot</td><td style="padding:4px 6px;font-family:monospace">api.moonshot.cn/v1/chat/completions</td><td style="padding:4px 6px;font-family:monospace">moonshot-v1-8k</td></tr>
+        <tr><td style="padding:4px 6px;font-weight:600">OpenAI</td><td style="padding:4px 6px;font-family:monospace">api.openai.com/v1/chat/completions</td><td style="padding:4px 6px;font-family:monospace">gpt-4o-mini</td></tr>
+      </table>
+    </details>
     <div class="config-actions">
       <button class="btn-cancel" id="config-cancel">取消</button>
       <button class="btn-save" id="config-save">保存并连接</button>
@@ -250,24 +269,45 @@ function saveLocal() {
 function getConfig() {
   return {
     clientId: localStorage.getItem('gcal_client_id') || '',
-    anthropicKey: localStorage.getItem('anthropic_key') || ''
+    anthropicKey: localStorage.getItem('anthropic_key') || '',
+    apiUrl: localStorage.getItem('api_url') || 'https://api.deepseek.com/chat/completions',
+    apiModel: localStorage.getItem('api_model') || 'deepseek-chat'
   };
 }
-function saveConfig(cid, akey) {
+function saveConfig(cid, akey, apiUrl, apiModel) {
   localStorage.setItem('gcal_client_id', cid);
   localStorage.setItem('anthropic_key', akey);
+  localStorage.setItem('api_url', apiUrl);
+  localStorage.setItem('api_model', apiModel);
 }
 
 // ── Tasks ────────────────────────────────────────────────
+
+// ── 每月第N周辅助 ─────────────────────────────────────
+function getWeekOfMonth(d) {
+  // 返回 d 是当月第几个"星期X"（1-based）
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const firstWeekday = first.getDay();
+  const dayOfMonth = d.getDate();
+  return Math.ceil((dayOfMonth + firstWeekday) / 7);
+}
 function getTasksForDate(d) {
   const key = dateKey(d);
   const regular = tasks[key] ? [...tasks[key]] : [];
   const repeating = repeatTasks
-    .filter(rt => { const s = parseDateKey(rt.startDate); return d >= s && d.getDay() === rt.weekday; })
+    .filter(rt => {
+      const s = parseDateKey(rt.startDate);
+      if (d < s) return false;
+      if (d.getDay() !== rt.weekday) return false;
+      // 如果指定了每月第几周，则额外过滤
+      if (rt.monthWeek) return getWeekOfMonth(d) === rt.monthWeek;
+      return true;
+    })
     .map(rt => ({
       id: 'rep_' + rt.id + '_' + dateKey(d),
       title: rt.title, time: rt.time, done: false,
-      repeat: true, repeatId: rt.id, gcalId: rt.gcalId || null
+      repeat: true, repeatId: rt.id, gcalId: rt.gcalId || null,
+      monthWeek: rt.monthWeek || null
     }));
   // merge done state for repeat tasks
   repeating.forEach(rt => {
@@ -312,7 +352,7 @@ function updateGcalUI(state) {
   const syncAllBtn = document.getElementById('sync-all-btn');
   card.className = 'gcal-card';
   if (state === 'none') {
-    text.textContent = '请配置DeepSeek API Key 以启用自然语言输入';
+    text.textContent = '请配置 AI 解析以启用自然语言输入';
     btn.className = 'gcal-btn connect'; btn.textContent = '配置 API';
     btn.onclick = () => document.getElementById('config-overlay').classList.add('show');
     syncAllBtn.style.display = 'none';
@@ -323,7 +363,7 @@ function updateGcalUI(state) {
     syncAllBtn.style.display = 'none';
   } else if (state === 'connected') {
     card.className = 'gcal-card connected';
-    text.textContent = 'DeepSeek AI 已配置，自然语言输入已启用';
+    text.textContent = 'AI 已配置，自然语言输入已启用';
     btn.className = 'gcal-btn disconnect'; btn.textContent = '修改 Key';
     btn.onclick = () => document.getElementById('config-overlay').classList.add('show');
     syncAllBtn.style.display = 'none';
@@ -458,18 +498,18 @@ function renderTasks() {
     list.innerHTML = `<div class="empty-state"><i class="ti ti-calendar-off"></i>暂无待办事项</div>`;
     return;
   }
-  // Sort: timed tasks first (ascending), then NA tasks
+  // 按 deadline 排序：有时间的在前
   tasks4day = [...tasks4day].sort((a, b) => {
-    if (a.time && b.time) return a.time.localeCompare(b.time);
-    if (a.time) return -1;
-    if (b.time) return 1;
-    return 0;
+    const da = a.deadline || '', db = b.deadline || '';
+    if (da && db) return da.localeCompare(db);
+    if (da) return -1; if (db) return 1; return 0;
   });
   const table = document.createElement('table');
   table.className = 'task-table';
   table.innerHTML = `<thead><tr>
-    <th class="col-head col-head-time">时间</th>
-    <th class="col-head col-head-task">事项</th>
+    <th class="col-head col-head-cat">类别</th>
+    <th class="col-head col-head-dl">Deadline</th>
+    <th class="col-head col-head-task">提醒事项</th>
     <th class="col-head col-head-actions"></th>
   </tr></thead>`;
   const tbody = document.createElement('tbody');
@@ -482,8 +522,11 @@ function renderTasks() {
         ? `<button class="icon-btn cal sync-one" title="同步到 Google Calendar"><i class="ti ti-calendar-plus"></i></button>`
         : '';
     tr.innerHTML = `
-      <td class="td-time">
-        <input class="task-time-input" value="${task.time||''}" placeholder="NA">
+      <td class="td-cat">
+        <input class="cat-input" value="${escHtml(task.category||'')}" placeholder="—">
+      </td>
+      <td class="td-dl">
+        <input class="dl-input" value="${escHtml(task.deadline||'')}" placeholder="—">
       </td>
       <td class="td-task">
         <div style="display:flex;align-items:center;gap:6px">
@@ -491,7 +534,8 @@ function renderTasks() {
           <div style="flex:1;min-width:0">
             <input class="task-title-input" value="${escHtml(task.title)}">
             <div style="display:flex;gap:5px;margin-top:2px;flex-wrap:wrap">
-              ${task.repeat ? '<span class="badge badge-repeat">每周循环</span>' : ''}
+              ${task.repeat ? `<span class="badge badge-repeat">${task.monthWeek ? '每月第'+task.monthWeek+'周' : '每周'}循环</span>` : ''}
+              ${task.carriedFrom ? `<span class="badge" style="background:var(--red-light);color:#a32d2d;font-size:10px;padding:1px 7px;border-radius:10px">↩ 结转自${task.carriedDate ? task.carriedDate.slice(5).replace('-','/') : '昨日'}</span>` : ''}
               ${task.gcalId ? '<span class="badge badge-synced"><i class="ti ti-brand-google" style="font-size:9px"></i>已同步</span>' : ''}
             </div>
           </div>
@@ -508,24 +552,15 @@ function renderTasks() {
     tr.querySelector('.del-btn').onclick = () => deleteTask(task.id, task.repeatId);
     const sb = tr.querySelector('.sync-one');
     if (sb) sb.onclick = () => handleSyncOne(sb, task);
-    // Inline edit: title
+    // 类别编辑
+    const catInput = tr.querySelector('.cat-input');
+    catInput.onchange = () => updateTask(task.id, task.repeatId, 'category', catInput.value.trim());
+    // Deadline 编辑
+    const dlInput = tr.querySelector('.dl-input');
+    dlInput.onchange = () => { updateTask(task.id, task.repeatId, 'deadline', dlInput.value.trim()); renderTasks(); };
+    // 提醒事项编辑
     const titleInput = tr.querySelector('.task-title-input');
     titleInput.onchange = () => updateTask(task.id, task.repeatId, 'title', titleInput.value.trim());
-    // Inline edit: time
-    const timeInput = tr.querySelector('.task-time-input');
-    timeInput.onchange = () => {
-      const v = timeInput.value.trim().toUpperCase();
-      if (v === '' || v === 'NA') {
-        updateTask(task.id, task.repeatId, 'time', null);
-        renderTasks();
-      } else if (/^\d{1,2}:\d{2}$/.test(v)) {
-        updateTask(task.id, task.repeatId, 'time', v);
-        renderTasks();
-      } else {
-        showToast('时间格式：09:30，或留空显示 NA', 'err');
-        timeInput.value = task.time || '';
-      }
-    };
   });
   table.appendChild(tbody);
   list.innerHTML = '';
@@ -583,21 +618,33 @@ function deleteTask(id, repId) {
 // ── AI Parse ──────────────────────────────────────────────
 async function parseWithAI(text) {
   const { anthropicKey } = getConfig();
-  if (!anthropicKey) { showToast('请先在"配置 API"中填写 Anthropic Key', 'err'); return null; }
+  if (!anthropicKey) { showToast('请先点击"配置 API"填写 Key', 'err'); return null; }
   const today = todayDate();
   const prompt = `你是日程解析助手。当前：${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日（周${DAYS_CN[today.getDay()]}）。
 用户输入：「${text}」
-返回JSON（只返回JSON）：{"title":"任务名","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"weekday":null}
-规则：repeat=true时填weekday(0=周日)；无日期→今天(${dateKey(today)})；"5.29"/"5月29"→当年；"3点"=15:00；"下午3点"=15:00；"上午10点"=10:00`;
+用户可能一次描述多个事项，请全部识别，并自动归类为三列。返回JSON数组（只返回JSON数组，不要有其他内容）：
+[{"title":"提醒事项（核心描述）","category":"类别（如工作/学习/生活/会议/健康，无法判断则空字符串）","deadline":"截止时间（YYYY-MM-DD HH:MM格式，仅有日期则YYYY-MM-DD，无则空字符串）","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"weekday":null,"monthWeek":null}]
+规则：
+- 每个事项单独一个对象，即使只有一个也返回数组
+- title只写核心事项，不含时间和类别信息
+- category从语义推断，如"开组会"→工作，"买菜"→生活，"背单词"→学习
+- deadline是deadline，time是提醒时间；如"周五下午两点汇报"，deadline="本周五日期 14:00"，date=本周五日期，time="14:00"
+- repeat=true时填weekday(0=周日,1=周一...6=周六)，每月第N周填monthWeek=N
+- 无日期→今天(${dateKey(today)})；"周四"→本周四对应日期；"5.29"→当年5月29日
+- "3点"=15:00，"下午3点"=15:00，"上午10点"=10:00`;
+  const { apiUrl, apiModel } = getConfig();
   try {
-    const resp = await fetch('https://api.deepseek.com/chat/completions', {
+    const resp = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + anthropicKey },
-      body: JSON.stringify({ model: 'deepseek-chat', max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: apiModel, max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
     });
     const data = await resp.json();
     const raw = data.choices ? data.choices[0].message.content : '';
-    return JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const cleaned = raw.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(cleaned);
+    // 统一返回数组
+    return Array.isArray(parsed) ? parsed : [parsed];
   } catch(e) { return null; }
 }
 
@@ -611,42 +658,101 @@ async function addTask() {
   statusEl.className = 'status-bar show';
   statusEl.innerHTML = '<div class="spinner"></div><span>AI 解析中…</span>';
 
-  const parsed = await parseWithAI(text);
-  if (!parsed) {
+  const parsedList = await parseWithAI(text);
+  if (!parsedList || !parsedList.length) {
     statusEl.className = 'status-bar show err';
     statusEl.innerHTML = '<i class="ti ti-x"></i><span>解析失败，请重试或检查 API Key</span>';
     input.disabled = false; document.getElementById('send-btn').disabled = false;
     setTimeout(() => statusEl.className='status-bar', 3500);
     return;
   }
-  const id = 'task_' + Date.now();
-  let msg = '';
-  if (parsed.repeat) {
-    const startDate = parsed.date || dateKey(todayDate());
-    const weekday = parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay();
-    repeatTasks.push({ id, title: parsed.title, time: parsed.time, weekday, startDate });
-    selectedDate = parseDateKey(startDate);
-    msg = `已添加每周循环任务（周${DAYS_CN[weekday]}）`;
-  } else {
-    const targetDate = parsed.date ? parseDateKey(parsed.date) : todayDate();
-    const key = dateKey(targetDate);
-    if (!tasks[key]) tasks[key] = [];
-    tasks[key].push({ id, title: parsed.title, time: parsed.time, done: false });
-    selectedDate = targetDate;
-    const diff = Math.floor((targetDate - todayDate()) / (7*24*3600*1000));
+  const msgs = [];
+  let lastDate = null;
+  parsedList.forEach((parsed, idx) => {
+    const id = 'task_' + Date.now() + '_' + idx;
+    if (parsed.repeat) {
+      const startDate = parsed.date || dateKey(todayDate());
+      const weekday = parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay();
+      repeatTasks.push({ id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'', time: parsed.time, weekday, startDate, monthWeek: parsed.monthWeek || null });
+      lastDate = parseDateKey(startDate);
+      msgs.push(parsed.monthWeek
+        ? `每月第${parsed.monthWeek}周周${DAYS_CN[weekday]}：${parsed.title}`
+        : `每周${DAYS_CN[weekday]}：${parsed.title}`);
+    } else {
+      const targetDate = parsed.date ? parseDateKey(parsed.date) : todayDate();
+      const key = dateKey(targetDate);
+      if (!tasks[key]) tasks[key] = [];
+      tasks[key].push({ id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'', time: parsed.time, done: false });
+      lastDate = targetDate;
+      msgs.push(`${targetDate.getMonth()+1}/${targetDate.getDate()}${parsed.time ? ' '+parsed.time : ''}：${parsed.title}`);
+    }
+  });
+  // 跳转到最后一个事项的日期
+  if (lastDate) {
+    selectedDate = lastDate;
+    const diff = Math.floor((lastDate - todayDate()) / (7*24*3600*1000));
     weekOffset = diff >= 0 ? Math.floor(diff/7) : -Math.ceil(-diff/7);
-    msg = `已添加到 ${targetDate.getMonth()+1}月${targetDate.getDate()}日${parsed.time ? ' · '+parsed.time : ''}`;
   }
   saveLocal();
+  const total = parsedList.length;
   statusEl.className = 'status-bar show ok';
-  statusEl.innerHTML = `<i class="ti ti-check"></i><span>${msg}</span>`;
+  statusEl.innerHTML = `<i class="ti ti-check"></i><span>已添加 ${total} 项：${msgs.join('；')}</span>`;
   renderAll();
   input.disabled = false; document.getElementById('send-btn').disabled = false;
-  setTimeout(() => statusEl.className='status-bar', 4000);
+  setTimeout(() => statusEl.className='status-bar', 5000);
 }
 
 document.getElementById('send-btn').onclick = addTask;
 document.getElementById('task-input').addEventListener('keydown', e => { if (e.key==='Enter') addTask(); });
+
+// ── 语音输入 ─────────────────────────────────────
+(function() {
+  const micBtn = document.getElementById('mic-btn');
+  const taskInput = document.getElementById('task-input');
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    micBtn.style.display = 'none'; return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  let recording = false;
+  micBtn.onclick = () => {
+    if (recording) { recognition.stop(); return; }
+    recognition.start();
+  };
+  recognition.onstart = () => {
+    recording = true;
+    micBtn.classList.add('recording');
+    micBtn.title = '录音中，点击停止';
+    micBtn.querySelector('i').className = 'ti ti-microphone-off';
+  };
+  recognition.onend = () => {
+    recording = false;
+    micBtn.classList.remove('recording');
+    micBtn.title = '语音输入';
+    micBtn.querySelector('i').className = 'ti ti-microphone';
+    // 如果有内容，自动触发添加
+    if (taskInput.value.trim()) addTask();
+  };
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t; else interim += t;
+    }
+    taskInput.value = final || interim;
+  };
+  recognition.onerror = (e) => {
+    recording = false;
+    micBtn.classList.remove('recording');
+    micBtn.querySelector('i').className = 'ti ti-microphone';
+    if (e.error === 'not-allowed') showToast('请允许浏览器使用麦克风', 'err');
+    else if (e.error !== 'no-speech') showToast('语音识别出错，请重试', 'err');
+  };
+})();
+
 document.getElementById('prev-btn').onclick = () => { weekOffset--; renderAll(); };
 document.getElementById('next-btn').onclick = () => { weekOffset++; renderAll(); };
 document.getElementById('jump-today-btn').onclick = () => { weekOffset=0; selectedDate=todayDate(); renderAll(); };
@@ -656,17 +762,23 @@ document.getElementById('config-cancel').onclick = () => document.getElementById
 document.getElementById('config-save').onclick = () => {
   const cid = document.getElementById('client-id-input').value.trim();
   const akey = document.getElementById('anthropic-key-input').value.trim();
-  if (!akey) { showToast('请填写DeepSeek API Key', 'err'); return; }
-  saveConfig(cid, akey);
+  const apiUrl = document.getElementById('api-url-input').value.trim();
+  const apiModel = document.getElementById('api-model-input').value.trim();
+  if (!akey) { showToast('请填写 API Key', 'err'); return; }
+  if (!apiUrl) { showToast('请填写 API 地址', 'err'); return; }
+  if (!apiModel) { showToast('请填写模型名称', 'err'); return; }
+  saveConfig(cid, akey, apiUrl, apiModel);
   document.getElementById('config-overlay').classList.remove('show');
   showToast('配置已保存');
   if (cid) initGcal();
 };
 // pre-fill saved values
 document.getElementById('config-overlay').addEventListener('transitionend', () => {
-  const { clientId, anthropicKey } = getConfig();
+  const { clientId, anthropicKey, apiUrl, apiModel } = getConfig();
   document.getElementById('client-id-input').value = clientId;
   document.getElementById('anthropic-key-input').value = anthropicKey;
+  document.getElementById('api-url-input').value = apiUrl;
+  document.getElementById('api-model-input').value = apiModel;
 });
 document.getElementById('config-overlay').onclick = e => {
   if (e.target === document.getElementById('config-overlay')) document.getElementById('config-overlay').classList.remove('show');
@@ -701,16 +813,48 @@ if ('Notification' in window && Notification.permission === 'default') {
   scheduleReminder();
 }
 
+// ── 未完成事项自动结转 ────────────────────────────────
+function carryOverUnfinished() {
+  const today = todayDate();
+  const todayKey = dateKey(today);
+  const lastCheckedKey = localStorage.getItem('carry_last_checked');
+  if (lastCheckedKey === todayKey) return;
+  const pastKeys = Object.keys(tasks).filter(k => k < todayKey);
+  let carried = 0;
+  pastKeys.forEach(k => {
+    const unfinished = (tasks[k] || []).filter(t => !t.done && !t.carriedFrom);
+    unfinished.forEach(t => {
+      if (!tasks[todayKey]) tasks[todayKey] = [];
+      const alreadyCarried = tasks[todayKey].some(ct => ct.carriedFrom === t.id);
+      if (!alreadyCarried) {
+        tasks[todayKey].push({
+          id: 'carry_' + t.id + '_' + todayKey,
+          title: t.title, time: t.time, done: false,
+          carriedFrom: t.id, carriedDate: k
+        });
+        carried++;
+      }
+    });
+  });
+  if (carried > 0) saveLocal();
+  localStorage.setItem('carry_last_checked', todayKey);
+  return carried;
+}
+
 // ── Init ──────────────────────────────────────────────────
 loadLocal();
+const carriedCount = carryOverUnfinished();
 renderAll();
 initGcal();
+if (carriedCount > 0) setTimeout(() => showToast(`已将 ${carriedCount} 项未完成事项结转至今日`), 500);
 
 // pre-fill modal on open
 document.getElementById('gcal-main-btn').addEventListener('click', () => {
-  const { clientId, anthropicKey } = getConfig();
+  const { clientId, anthropicKey, apiUrl, apiModel } = getConfig();
   document.getElementById('client-id-input').value = clientId;
   document.getElementById('anthropic-key-input').value = anthropicKey;
+  document.getElementById('api-url-input').value = apiUrl;
+  document.getElementById('api-model-input').value = apiModel;
 });
 </script>
 </body>
