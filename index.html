@@ -337,9 +337,14 @@ async function syncToCloud() {
   const si = document.getElementById('sync-indicator');
   si.classList.add('show');
   try {
+    // 每个用户用自己的 user_id 行，RLS 确保只能读写自己的数据
     await Promise.all([
-      _sb.from('tasks').upsert({ id: uid, user_id: uid, data: tasks, updated_at: new Date().toISOString() }, { onConflict: 'id' }),
-      _sb.from('repeat_tasks').upsert({ id: uid + '_r', user_id: uid, data: repeatTasks, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      _sb.from('tasks')
+        .upsert({ user_id: uid, data: tasks, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' }),
+      _sb.from('repeat_tasks')
+        .upsert({ user_id: uid, data: repeatTasks, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' })
     ]);
   } catch(e) { console.error('sync error', e); }
   si.classList.remove('show');
@@ -350,20 +355,20 @@ async function loadFromCloud() {
   const uid = _currentUser.id;
   try {
     const [t, r] = await Promise.all([
-      _sb.from('tasks').select('data,updated_at').eq('id', uid).single(),
-      _sb.from('repeat_tasks').select('data,updated_at').eq('id', uid + '_r').single()
+      _sb.from('tasks').select('data,updated_at').eq('user_id', uid).maybeSingle(),
+      _sb.from('repeat_tasks').select('data,updated_at').eq('user_id', uid).maybeSingle()
     ]);
-    const localUpdated = localStorage.getItem('cloud_updated') || '0';
-    const cloudUpdated = t.data?.updated_at || '0';
-    // 云端比本地新则用云端数据
-    if (cloudUpdated > localUpdated) {
-      if (t.data?.data) { tasks = t.data.data; localStorage.setItem('tasks_v2', JSON.stringify(tasks)); }
-      if (r.data?.data) { repeatTasks = r.data.data; localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks)); }
-      localStorage.setItem('cloud_updated', cloudUpdated);
-      return true;
+    // 只读自己账号的数据，其他账号的数据 RLS 完全拦截
+    if (t.data?.data) {
+      tasks = t.data.data;
+      localStorage.setItem('tasks_v2', JSON.stringify(tasks));
     }
-  } catch(e) {}
-  return false;
+    if (r.data?.data) {
+      repeatTasks = r.data.data;
+      localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks));
+    }
+    return !!(t.data || r.data);
+  } catch(e) { console.error('load error', e); return false; }
 }
 
 async function initAuth() {
