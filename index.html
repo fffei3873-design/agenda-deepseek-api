@@ -7,6 +7,7 @@
 <title>我的日程</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --teal: #1D9E75;
@@ -144,6 +145,20 @@
   .btn-save { border: none; background: var(--teal); color: white; border-radius: var(--radius); padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); border-radius: var(--radius); padding: 10px 18px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 300; white-space: nowrap; max-width: 90vw; text-align: center; }
   .toast.show { opacity: 1; }
+  .login-overlay { display:none; position:fixed; inset:0; background:var(--bg3); z-index:400; align-items:center; justify-content:center; flex-direction:column; gap:16px; }
+  .login-overlay.show { display:flex; }
+  .login-box { background:var(--bg); border-radius:var(--radius-lg); padding:2rem; max-width:340px; width:90%; text-align:center; border:1px solid var(--border); }
+  .login-box h2 { font-size:20px; font-weight:600; margin-bottom:6px; }
+  .login-box p { font-size:13px; color:var(--text2); margin-bottom:1.5rem; line-height:1.6; }
+  .github-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:11px; border-radius:var(--radius); border:none; background:#24292e; color:white; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+  .github-btn:hover { background:#1a1f23; }
+  .user-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-lg); background:var(--bg); border:1px solid var(--border); margin-bottom:1rem; font-size:13px; }
+  .user-avatar { width:24px; height:24px; border-radius:50%; object-fit:cover; }
+  .user-name { flex:1; color:var(--text2); }
+  .logout-btn { border:1px solid var(--border2); background:none; border-radius:var(--radius); padding:3px 10px; font-size:12px; cursor:pointer; color:var(--text2); }
+  .logout-btn:hover { background:var(--bg2); }
+  .sync-indicator { font-size:11px; color:var(--teal); display:none; align-items:center; gap:4px; }
+  .sync-indicator.show { display:flex; }
   .task-title-input { border: none; background: transparent; font-size: 14px; color: var(--text); font-family: inherit; outline: none; width: 100%; padding: 0; }
   .task-title-input:focus { border-bottom: 1px solid var(--teal); }
   .task-row.done .task-title-input { text-decoration: line-through; }
@@ -161,6 +176,14 @@
 </head>
 <body>
 <div class="container">
+
+  <!-- 用户栏 -->
+  <div class="user-bar" id="user-bar" style="display:none">
+    <img class="user-avatar" id="user-avatar" src="" alt="">
+    <span class="user-name" id="user-name"></span>
+    <span class="sync-indicator" id="sync-indicator"><div class="spinner" style="width:10px;height:10px"></div>同步中</span>
+    <button class="logout-btn" id="logout-btn">退出</button>
+  </div>
 
   <div class="header">
     <div>
@@ -229,14 +252,37 @@
         <tr><td style="padding:4px 6px;font-weight:600">OpenAI</td><td style="padding:4px 6px;font-family:monospace">api.openai.com/v1/chat/completions</td><td style="padding:4px 6px;font-family:monospace">gpt-4o-mini</td></tr>
       </table>
     </details>
+    <div style="border-top:1px solid var(--border);margin:16px 0 12px;padding-top:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">数据迁移</div>
+      <div style="display:flex;gap:8px">
+        <button id="export-btn" style="flex:1;border:1px solid var(--border2);background:none;border-radius:var(--radius);padding:7px;font-size:13px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:5px">
+          <i class="ti ti-download"></i> 导出数据
+        </button>
+        <label id="import-label" style="flex:1;border:1px solid var(--border2);background:none;border-radius:var(--radius);padding:7px;font-size:13px;cursor:pointer;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:5px">
+          <i class="ti ti-upload"></i> 导入数据
+          <input type="file" id="import-input" accept=".json" style="display:none">
+        </label>
+      </div>
+    </div>
     <div class="config-actions">
       <button class="btn-cancel" id="config-cancel">取消</button>
-      <button class="btn-save" id="config-save">保存并连接</button>
+      <button class="btn-save" id="config-save">保存</button>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <h2>我的日程</h2>
+    <p>登录后数据自动同步到云端，手机电脑随时查看</p>
+    <button class="github-btn" id="github-login-btn">
+      <i class="ti ti-brand-github" style="font-size:20px"></i>
+      用 GitHub 账号登录
+    </button>
+  </div>
+</div>
 
 <script>
 const DAYS_CN = ['日','一','二','三','四','五','六'];
@@ -262,7 +308,11 @@ function parseDateKey(s) {
   const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d);
 }
 
-// ── Storage ─────────────────────────────────────────────
+// ── Supabase ─────────────────────────────────────────────
+const _sb = supabase.createClient('https://pshpkgwmqmborpktybui.supabase.co', 'sb_publishable_X31DqTzMai4hjAAEEl_5sQ_0UECIgOP');
+let _currentUser = null;
+let _syncTimer = null;
+
 function loadLocal() {
   try { tasks = JSON.parse(localStorage.getItem('tasks_v2') || '{}'); } catch(e) { tasks = {}; }
   try { repeatTasks = JSON.parse(localStorage.getItem('repeat_tasks_v2') || '[]'); } catch(e) { repeatTasks = []; }
@@ -270,7 +320,96 @@ function loadLocal() {
 function saveLocal() {
   localStorage.setItem('tasks_v2', JSON.stringify(tasks));
   localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks));
+  // 云同步（防抖 1.5s）
+  if (_currentUser) {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(() => syncToCloud(), 1500);
+  }
 }
+
+async function syncToCloud() {
+  if (!_currentUser) return;
+  const uid = _currentUser.id;
+  const si = document.getElementById('sync-indicator');
+  si.classList.add('show');
+  try {
+    await Promise.all([
+      _sb.from('tasks').upsert({ id: uid, user_id: uid, data: tasks, updated_at: new Date().toISOString() }, { onConflict: 'id' }),
+      _sb.from('repeat_tasks').upsert({ id: uid + '_r', user_id: uid, data: repeatTasks, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    ]);
+  } catch(e) { console.error('sync error', e); }
+  si.classList.remove('show');
+}
+
+async function loadFromCloud() {
+  if (!_currentUser) return false;
+  const uid = _currentUser.id;
+  try {
+    const [t, r] = await Promise.all([
+      _sb.from('tasks').select('data,updated_at').eq('id', uid).single(),
+      _sb.from('repeat_tasks').select('data,updated_at').eq('id', uid + '_r').single()
+    ]);
+    const localUpdated = localStorage.getItem('cloud_updated') || '0';
+    const cloudUpdated = t.data?.updated_at || '0';
+    // 云端比本地新则用云端数据
+    if (cloudUpdated > localUpdated) {
+      if (t.data?.data) { tasks = t.data.data; localStorage.setItem('tasks_v2', JSON.stringify(tasks)); }
+      if (r.data?.data) { repeatTasks = r.data.data; localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks)); }
+      localStorage.setItem('cloud_updated', cloudUpdated);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+async function initAuth() {
+  const { data: { session } } = await _sb.auth.getSession();
+  if (session?.user) {
+    await onLogin(session.user);
+  } else {
+    document.getElementById('login-overlay').classList.add('show');
+  }
+  _sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      document.getElementById('login-overlay').classList.remove('show');
+      await onLogin(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      _currentUser = null;
+      document.getElementById('user-bar').style.display = 'none';
+      document.getElementById('login-overlay').classList.add('show');
+    }
+  });
+}
+
+async function onLogin(user) {
+  _currentUser = user;
+  // 显示用户栏
+  const bar = document.getElementById('user-bar');
+  bar.style.display = 'flex';
+  document.getElementById('user-name').textContent = user.user_metadata?.user_name || user.email || '已登录';
+  const avatar = user.user_metadata?.avatar_url;
+  const avatarEl = document.getElementById('user-avatar');
+  if (avatar) avatarEl.src = avatar; else avatarEl.style.display = 'none';
+  // 从云端加载数据
+  const si = document.getElementById('sync-indicator');
+  si.classList.add('show');
+  const fromCloud = await loadFromCloud();
+  si.classList.remove('show');
+  if (fromCloud) renderAll();
+  // 如有本地未同步数据，推送到云端
+  else if (Object.keys(tasks).length > 0 || repeatTasks.length > 0) syncToCloud();
+}
+
+document.getElementById('github-login-btn').onclick = () => {
+  _sb.auth.signInWithOAuth({
+    provider: 'github',
+    options: { redirectTo: window.location.href }
+  });
+};
+document.getElementById('logout-btn').onclick = async () => {
+  await _sb.auth.signOut();
+  showToast('已退出登录');
+};
 function getConfig() {
   return {
     clientId: localStorage.getItem('gcal_client_id') || '',
@@ -887,6 +1026,52 @@ document.getElementById('jump-today-btn').onclick = () => { weekOffset=0; select
 
 // ── Config Modal ──────────────────────────────────────────
 document.getElementById('config-cancel').onclick = () => document.getElementById('config-overlay').classList.remove('show');
+
+// ── 导出 / 导入数据 ───────────────────────────────
+document.getElementById('export-btn').onclick = () => {
+  const data = {
+    tasks_v2: localStorage.getItem('tasks_v2'),
+    repeat_tasks_v2: localStorage.getItem('repeat_tasks_v2'),
+    anthropic_key: localStorage.getItem('anthropic_key'),
+    api_url: localStorage.getItem('api_url'),
+    api_model: localStorage.getItem('api_model'),
+    carry_last_checked: localStorage.getItem('carry_last_checked')
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date();
+  a.href = url;
+  a.download = `我的日程-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('数据已导出');
+};
+
+document.getElementById('import-input').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      let imported = 0;
+      Object.keys(data).forEach(k => {
+        if (data[k]) { localStorage.setItem(k, data[k]); imported++; }
+      });
+      document.getElementById('config-overlay').classList.remove('show');
+      loadLocal();
+      renderAll();
+      initGcal();
+      showToast(`导入成功，已恢复 ${imported} 项数据`);
+    } catch(err) {
+      showToast('导入失败，请检查文件格式', 'err');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // 允许重复导入同一文件
+};
+
 document.getElementById('config-save').onclick = () => {
   const cid = document.getElementById('client-id-input').value.trim();
   const akey = document.getElementById('anthropic-key-input').value.trim();
@@ -975,6 +1160,7 @@ const carriedCount = carryOverUnfinished();
 renderAll();
 initGcal();
 if (carriedCount > 0) setTimeout(() => showToast(`已将 ${carriedCount} 项未完成事项结转至今日`), 500);
+initAuth();
 
 // pre-fill modal on open
 document.getElementById('gcal-main-btn').addEventListener('click', () => {
