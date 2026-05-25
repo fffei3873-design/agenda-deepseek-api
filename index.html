@@ -276,11 +276,15 @@
 <div class="login-overlay" id="login-overlay">
   <div class="login-box">
     <h2>我的日程</h2>
-    <p>登录后数据自动同步到云端，手机电脑随时查看</p>
-    <button class="github-btn" id="github-login-btn">
-      <i class="ti ti-brand-github" style="font-size:20px"></i>
-      用 GitHub 账号登录
+    <p>输入邮箱，我们发送一个登录链接给你，无需密码</p>
+    <input type="email" id="login-email" placeholder="输入你的邮箱" style="width:100%;border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;font-size:14px;background:var(--bg2);color:var(--text);outline:none;margin-bottom:10px;font-family:inherit">
+    <button id="magic-link-btn" style="width:100%;padding:11px;border-radius:var(--radius);border:none;background:var(--teal);color:white;font-size:14px;font-weight:600;cursor:pointer">
+      发送登录链接
     </button>
+    <div id="login-sent" style="display:none;margin-top:12px;font-size:13px;color:var(--teal-dark);background:var(--teal-light);padding:10px;border-radius:var(--radius);line-height:1.6">
+      ✅ 链接已发送！请去邮箱点击链接完成登录
+    </div>
+    <div id="login-err" style="display:none;margin-top:10px;font-size:13px;color:#a32d2d"></div>
   </div>
 </div>
 
@@ -386,10 +390,8 @@ async function onLogin(user) {
   // 显示用户栏
   const bar = document.getElementById('user-bar');
   bar.style.display = 'flex';
-  document.getElementById('user-name').textContent = user.user_metadata?.user_name || user.email || '已登录';
-  const avatar = user.user_metadata?.avatar_url;
-  const avatarEl = document.getElementById('user-avatar');
-  if (avatar) avatarEl.src = avatar; else avatarEl.style.display = 'none';
+  document.getElementById('user-name').textContent = user.email || '已登录';
+  document.getElementById('user-avatar').style.display = 'none';
   // 从云端加载数据
   const si = document.getElementById('sync-indicator');
   si.classList.add('show');
@@ -400,12 +402,32 @@ async function onLogin(user) {
   else if (Object.keys(tasks).length > 0 || repeatTasks.length > 0) syncToCloud();
 }
 
-document.getElementById('github-login-btn').onclick = () => {
-  _sb.auth.signInWithOAuth({
-    provider: 'github',
-    options: { redirectTo: window.location.href }
+document.getElementById('magic-link-btn').onclick = async () => {
+  const email = document.getElementById('login-email').value.trim();
+  const errEl = document.getElementById('login-err');
+  errEl.style.display = 'none';
+  if (!email || !email.includes('@')) {
+    errEl.textContent = '请输入有效的邮箱地址';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('magic-link-btn');
+  btn.disabled = true; btn.textContent = '发送中…';
+  const { error } = await _sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href }
   });
+  btn.disabled = false; btn.textContent = '发送登录链接';
+  if (error) {
+    errEl.textContent = '发送失败：' + error.message;
+    errEl.style.display = 'block';
+  } else {
+    document.getElementById('login-sent').style.display = 'block';
+  }
 };
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('magic-link-btn').click();
+});
 document.getElementById('logout-btn').onclick = async () => {
   await _sb.auth.signOut();
   showToast('已退出登录');
