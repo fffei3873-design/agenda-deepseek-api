@@ -81,9 +81,7 @@
   .td-task { padding: 8px 6px; vertical-align: middle; }
   .td-note { padding: 8px 8px; vertical-align: middle; width: 110px; }
   .td-actions { padding: 8px 6px; vertical-align: middle; text-align: right; white-space: nowrap; }
-  .note-input { border: none; background: transparent; font-size: 11px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; line-height: 1.5; }
-  .note-input:focus { border-bottom: 1px solid var(--teal); }
-  .note-tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-bottom: 2px; white-space: nowrap; }
+  .note-tag { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 8px; margin-bottom: 3px; white-space: normal; line-height: 1.5; }
   .note-tag-repeat { background: var(--teal-light); color: var(--teal-dark); }
   .note-tag-carry  { background: var(--red-light); color: #a32d2d; }
   .cat-input { border: none; background: transparent; font-size: 12px; color: var(--text2); font-family: inherit; outline: none; width: 100%; padding: 0; }
@@ -335,7 +333,7 @@ function matchesRepeat(rt, d) {
     case 'monthly-workday':
       return d.getDay() !== 0 && d.getDay() !== 6 && getNthWorkdayOfMonth(d) === rt.monthWorkday;
     case 'monthly-week':
-      return d.getDay() === rt.weekday && getWeekOfMonth(d) === rt.monthWeek;
+      return d.getDay() === (rt.weekday !== null && rt.weekday !== undefined ? rt.weekday : 1) && getNthWeekdayOfMonth(d) === rt.monthWeek;
     case 'monthly-weekday':
       return d.getDay() === rt.weekday && getNthWeekdayOfMonth(d) === rt.monthWeek;
     default:
@@ -587,7 +585,6 @@ function renderTasks() {
     const carryTag = task.carriedFrom
       ? `<div class="note-tag note-tag-carry">↩ 结转自${task.carriedDate ? task.carriedDate.slice(5).replace('-','/') : '昨日'}</div>`
       : '';
-    const noteVal = escHtml(task.note || '');
     tr.innerHTML = `
       <td class="td-cat">
         <input class="cat-input" value="${escHtml(task.category||'')}" placeholder="—">
@@ -603,7 +600,6 @@ function renderTasks() {
       </td>
       <td class="td-note">
         ${repeatTag}${carryTag}
-        <input class="note-input" value="${noteVal}" placeholder="备注/循环条件">
       </td>
       <td class="td-actions">
         <div class="task-actions">
@@ -619,27 +615,7 @@ function renderTasks() {
     tr.querySelector('.cat-input').onchange = e => updateTask(task.id, task.repeatId, 'category', e.target.value.trim());
     tr.querySelector('.dl-input').onchange = e => { updateTask(task.id, task.repeatId, 'deadline', e.target.value.trim()); renderTasks(); };
     tr.querySelector('.task-title-input').onchange = e => updateTask(task.id, task.repeatId, 'title', e.target.value.trim());
-    // 备注列：如果输入了循环条件，AI 解析后更新；否则保存为普通备注
-    const noteInput = tr.querySelector('.note-input');
-    noteInput.onchange = async () => {
-      const v = noteInput.value.trim();
-      if (!v) { updateTask(task.id, task.repeatId, 'note', ''); return; }
-      // 判断是否像循环条件
-      if (/每|循环|周|月|天|工作日/.test(v)) {
-        noteInput.disabled = true;
-        const repeatInfo = await parseRepeatCondition(v);
-        noteInput.disabled = false;
-        if (repeatInfo) {
-          applyRepeatToTask(task, repeatInfo);
-          renderAll();
-          showToast('循环条件已更新');
-        } else {
-          updateTask(task.id, task.repeatId, 'note', v);
-        }
-      } else {
-        updateTask(task.id, task.repeatId, 'note', v);
-      }
-    };
+
   });
   table.appendChild(tbody);
   list.innerHTML = '';
@@ -707,7 +683,7 @@ async function parseRepeatCondition(text) {
 - "每两周三" → repeatType:"biweekly",weekday:3
 - "每月15号" → repeatType:"monthly-day",monthDay:15
 - "每月第3个工作日" → repeatType:"monthly-workday",monthWorkday:3
-- "每月第2周" → repeatType:"monthly-week",monthWeek:2,weekday:1（周一）
+- "每月第2周" → repeatType:"monthly-week",monthWeek:2,weekday:1
 - "每月第1个周二" → repeatType:"monthly-weekday",monthWeek:1,weekday:2`;
   try {
     const resp = await fetch(apiUrl, {
@@ -773,7 +749,7 @@ async function parseWithAI(text) {
   * "biweekly"：每两周周X → weekday=0-6
   * "monthly-day"：每月第X天 → monthDay=日期数字(1-31)
   * "monthly-workday"：每月第X个工作日 → monthWorkday=数字
-  * "monthly-week"：每月第X周（自然周） → monthWeek=1-5，weekday=0-6
+  * "monthly-week"：每月第X周（未指定星期则默认周一） → monthWeek=1-5，weekday默认1
   * "monthly-weekday"：每月第X个周Y → monthWeek=X，weekday=Y的数字
 - repeat=true时必须填repeatType，同时填对应的weekday/monthDay/monthWorkday/monthWeek
 - 无日期→今天(${dateKey(today)})；"周四"→本周四对应日期；"5.29"→当年5月29日
@@ -822,7 +798,7 @@ async function addTask() {
       const rt = { id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'',
         time: parsed.time, startDate,
         repeatType: parsed.repeatType || 'weekly',
-        weekday: parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay(),
+        weekday: (parsed.weekday !== null && parsed.weekday !== undefined) ? parsed.weekday : (parsed.repeatType === 'monthly-week' ? 1 : parseDateKey(startDate).getDay()),
         monthDay: parsed.monthDay || null,
         monthWorkday: parsed.monthWorkday || null,
         monthWeek: parsed.monthWeek || null
