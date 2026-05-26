@@ -294,15 +294,12 @@
 <script>
 const DAYS_CN = ['日','一','二','三','四','五','六'];
 const MONTHS_CN = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
-const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 
 // ── State ──────────────────────────────────────────────
 let weekOffset = 0;
 let selectedDate = todayDate();
 let tasks = {};
 let repeatTasks = [];
-let gapiReady = false;
-let tokenClient = null;
 let accessToken = null;
 
 function todayDate() {
@@ -580,25 +577,6 @@ function getTasksForDate(d) {
   return [...regular, ...repeating];
 }
 
-// ── Google Identity / GAPI ────────────────────────────────
-function loadGoogleScripts(clientId) {
-  return new Promise((resolve) => {
-    let loaded = 0;
-    const check = () => { if (++loaded === 2) resolve(); };
-    if (!document.getElementById('gsi-script')) {
-      const s = document.createElement('script');
-      s.id = 'gsi-script'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-      s.onload = check; document.head.appendChild(s);
-    } else check();
-    if (!document.getElementById('gapi-script')) {
-      const s = document.createElement('script');
-      s.id = 'gapi-script'; s.src = 'https://apis.google.com/js/api.js'; s.async = true;
-      s.onload = () => { gapi.load('client', () => { gapiReady = true; check(); }); };
-      document.head.appendChild(s);
-    } else { if (gapiReady) check(); else gapi.load('client', () => { gapiReady = true; check(); }); }
-  });
-}
-
 async function initGcal() {
   const { anthropicKey } = getConfig();
   if (anthropicKey) {
@@ -618,11 +596,6 @@ function updateGcalUI(state) {
     text.textContent = '请配置 AI 解析以启用自然语言输入';
     btn.className = 'gcal-btn connect'; btn.textContent = '配置 API';
     btn.onclick = () => document.getElementById('config-overlay').classList.add('show');
-    syncAllBtn.style.display = 'none';
-  } else if (state === 'ready') {
-    text.textContent = '点击连接 Google Calendar，获得手机原生提醒';
-    btn.className = 'gcal-btn connect'; btn.textContent = '授权登录';
-    btn.onclick = () => tokenClient.requestAccessToken({ prompt: 'consent' });
     syncAllBtn.style.display = 'none';
   } else if (state === 'connected') {
     card.className = 'gcal-card connected';
@@ -761,9 +734,11 @@ function renderTasks() {
     list.innerHTML = `<div class="empty-state"><i class="ti ti-calendar-off"></i>暂无待办事项</div>`;
     return;
   }
-  // 按 deadline 排序：有时间的在前
+  // 按 deadline 排序：只有合法日期（YYYY-MM-DD）才参与排序，'/' 视为无 deadline
+  const isValidDl = s => s && /^\d{4}-\d{2}-\d{2}/.test(s);
   tasks4day = [...tasks4day].sort((a, b) => {
-    const da = a.deadline || '', db = b.deadline || '';
+    const da = isValidDl(a.deadline) ? a.deadline : '';
+    const db = isValidDl(b.deadline) ? b.deadline : '';
     if (da && db) return da.localeCompare(db);
     if (da) return -1; if (db) return 1; return 0;
   });
@@ -794,10 +769,10 @@ function renderTasks() {
       : '';
     tr.innerHTML = `
       <td class="td-cat">
-        <input class="cat-input" value="${escHtml(task.category||'')}" placeholder="—">
+        <input class="cat-input" value="${escHtml(task.category||'/')}" placeholder="/">
       </td>
       <td class="td-dl">
-        <input class="dl-input" value="${escHtml(task.deadline||'')}" placeholder="—">
+        <input class="dl-input" value="${escHtml(task.deadline||'/')}" placeholder="/">
       </td>
       <td class="td-task">
         <div style="display:flex;align-items:center;gap:6px">
@@ -861,8 +836,7 @@ function toggleDone(id, repeatId) {
     if (ov) { ov.done = !ov.done; }
     else {
       // 从 repeatTasks 找到原始数据补全 title
-      const repId = repeatId;
-      const rt = repeatTasks.find(r => r.id === repId);
+      const rt = repeatTasks.find(r => r.id === repeatId);
       tasks[key].push({ id, title: rt ? rt.title : '', time: rt ? rt.time : '', done: true, repeat: true });
     }
   } else {
@@ -883,7 +857,7 @@ function deleteTask(id, repId) {
 }
 
 
-// ── 解析备注列中的循环条件 ────────────────────────
+// ── 解析循环条件（备用，当前备注列为只读，暂未调用）────────────────────────
 async function parseRepeatCondition(text) {
   const { anthropicKey, apiUrl, apiModel } = getConfig();
   if (!anthropicKey) return null;
@@ -924,7 +898,6 @@ function applyRepeatToTask(task, repeatInfo) {
   } else {
     // 普通任务升级为循环任务
     const key = dateKey(selectedDate);
-    const existing = tasks[key] ? tasks[key].find(t => t.id === task.id) : null;
     const newRt = {
       id: task.id,
       title: task.title, category: task.category||'', deadline: task.deadline||'',
@@ -1006,7 +979,6 @@ async function addTask() {
     const id = 'task_' + Date.now() + '_' + idx;
     if (parsed.repeat) {
       const startDate = parsed.date || dateKey(todayDate());
-      const weekday = parsed.weekday !== null ? parsed.weekday : parseDateKey(startDate).getDay();
       const rt = { id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'',
         time: parsed.time, startDate,
         repeatType: parsed.repeatType || 'weekly',
@@ -1156,7 +1128,7 @@ document.getElementById('config-save').onclick = () => {
   saveConfig(cid, akey, apiUrl, apiModel);
   document.getElementById('config-overlay').classList.remove('show');
   showToast('配置已保存');
-  if (cid) initGcal();
+  initGcal();
 };
 // pre-fill saved values
 document.getElementById('config-overlay').addEventListener('transitionend', () => {
