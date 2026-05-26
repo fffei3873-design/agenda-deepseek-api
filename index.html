@@ -94,7 +94,6 @@
   .task-check.checked { background: var(--teal); border-color: var(--teal); }
   .task-check i { font-size: 11px; color: white; display: none; }
   .task-check.checked i { display: block; }
-  .badge { font-size: 10px; padding: 1px 7px; border-radius: 10px; }
   .task-actions { display: inline-flex; gap: 2px; }
   .icon-btn { border: none; background: none; cursor: pointer; color: var(--text2); font-size: 14px; padding: 3px 5px; border-radius: 5px; opacity: 0.4; transition: all 0.15s; }
   .icon-btn:hover { opacity: 1; background: var(--bg3); }
@@ -127,9 +126,6 @@
   .config-box { background: var(--bg); border-radius: var(--radius-lg); padding: 1.5rem; max-width: 440px; width: 100%; }
   .config-box h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
   .config-box p { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 1rem; }
-  .config-box ol { font-size: 13px; color: var(--text2); line-height: 2; padding-left: 1.2rem; margin-bottom: 1rem; }
-  .config-box ol a { color: var(--blue); text-decoration: none; }
-  .config-box ol a:hover { text-decoration: underline; }
   .config-box label { font-size: 12px; font-weight: 600; color: var(--text2); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
   .config-box input { width: 100%; border: 1px solid var(--border2); border-radius: var(--radius); padding: 9px 12px; font-size: 13px; background: var(--bg2); color: var(--text); outline: none; margin-bottom: 12px; font-family: monospace; }
   .config-box input:focus { border-color: var(--teal); }
@@ -143,7 +139,7 @@
   .login-box { background:var(--bg); border-radius:var(--radius-lg); padding:2rem; max-width:340px; width:90%; text-align:center; border:1px solid var(--border); }
   .login-box h2 { font-size:20px; font-weight:600; margin-bottom:6px; }
   .login-box p { font-size:13px; color:var(--text2); margin-bottom:1.5rem; line-height:1.6; }
-.user-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-lg); background:var(--bg); border:1px solid var(--border); margin-bottom:1rem; font-size:13px; }
+  .user-bar { display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:var(--radius-lg); background:var(--bg); border:1px solid var(--border); margin-bottom:1rem; font-size:13px; }
   .user-avatar { width:24px; height:24px; border-radius:50%; object-fit:cover; }
   .user-name { flex:1; color:var(--text2); }
   .logout-btn { border:1px solid var(--border2); background:none; border-radius:var(--radius); padding:3px 10px; font-size:12px; cursor:pointer; color:var(--text2); }
@@ -153,7 +149,7 @@
   .task-title-input { border: none; background: transparent; font-size: 14px; color: var(--text); font-family: inherit; outline: none; width: 100%; padding: 0; }
   .task-title-input:focus { border-bottom: 1px solid var(--teal); }
   .task-row.done .task-title-input { text-decoration: line-through; }
-@media (max-width: 500px) {
+  @media (max-width: 500px) {
     .container { padding: 1rem 0.75rem 4rem; }
     .header h1 { font-size: 18px; }
     .day-pill { min-width: 44px; }
@@ -794,7 +790,7 @@ async function parseWithAI(text) {
 字段规则：
 - title：核心事项描述，不含时间/类别
 - category：用户明确说了才填，否则填"/"
-- deadline：用户明确说"截止"才填YYYY-MM-DD格式，否则填"/"
+- deadline：只要用户提到了具体时间（如"四点半"、"下午3点"、"16:30"）或明确说"截止"，都填入deadline；格式为"YYYY-MM-DD HH:MM"（有时间时）或"YYYY-MM-DD"（仅日期）；日期同date字段，无日期则用今天；否则填"/"
 - date：无日期→今天(${dateKey(today)})；"周X"→本周对应日期；"下周X"→下周对应；"5.29"→当年5月29日
 - time："3点"=15:00，"上午X点"=X:00，"下午X点"=(X+12):00
 
@@ -817,7 +813,9 @@ repeatType取值及对应字段：
 "每月第3个工作日报销" → [{"title":"报销","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-workday","weekday":null,"monthDay":null,"monthWorkday":3,"monthWeek":null}]
 "每月第2周开会" → [{"title":"开会","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-week","weekday":1,"monthDay":null,"monthWorkday":null,"monthWeek":2}]
 "每月第1个周二填报" → [{"title":"填报","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-weekday","weekday":2,"monthDay":null,"monthWorkday":null,"monthWeek":1}]
-"5.29号3点交论文" → [{"title":"交论文","category":"/","deadline":"/","date":"${today.getFullYear()}-05-29","time":"15:00","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]`;
+"5.29号3点交论文" → [{"title":"交论文","category":"/","deadline":"${today.getFullYear()}-05-29 15:00","date":"${today.getFullYear()}-05-29","time":"15:00","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+"四点半在3A7开会" → [{"title":"在3A7开会","category":"/","deadline":"${dateKey(today)} 16:30","date":"${dateKey(today)}","time":"16:30","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+"下周五提交报告" → title="提交报告",deadline=下周五日期(无时间),date=下周五日期,time=null`;
 
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
