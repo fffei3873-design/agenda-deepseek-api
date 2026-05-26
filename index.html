@@ -401,30 +401,23 @@ async function initAuth() {
 async function onLogin(user) {
   _currentUser = user;
   // 显示用户栏
-  const bar = document.getElementById('user-bar');
-  bar.style.display = 'flex';
+  document.getElementById('user-bar').style.display = 'flex';
   document.getElementById('user-name').textContent = user.email || '已登录';
   document.getElementById('user-avatar').style.display = 'none';
-  // 从云端加载数据
+  // 步骤1：从云端拉取数据（覆盖本地）
   const si = document.getElementById('sync-indicator');
   si.classList.add('show');
-  const fromCloud = await loadFromCloud();
+  await loadFromCloud();
   si.classList.remove('show');
-  // 云端数据加载完后执行结转
-  const carriedCount = carryOverUnfinished(true); // 云端数据加载完后强制执行
+  // 步骤2：云端数据就绪，强制执行结转
+  const carriedCount = carryOverUnfinished(true);
+  // 步骤3：如有结转，立即同步回云端（不走防抖，确保不丢失）
   if (carriedCount > 0) {
-    renderAll();
+    await syncToCloud();
     showToast(`已将 ${carriedCount} 项未完成事项结转至今日`);
-  } else if (fromCloud) {
-    renderAll();
   }
-  // 登录后把本地未同步的数据推上去
-  if (!fromCloud && (Object.keys(tasks).length > 0 || repeatTasks.length > 0)) {
-    syncToCloud().catch(() => {});
-  }
-  if (fromCloud) renderAll();
-  // 如有本地未同步数据，推送到云端
-  else if (Object.keys(tasks).length > 0 || repeatTasks.length > 0) syncToCloud();
+  // 步骤4：渲染
+  renderAll();
 }
 
 (function() {
@@ -509,16 +502,7 @@ function saveConfig(cid, akey, apiUrl, apiModel) {
 // ── Tasks ────────────────────────────────────────────────
 
 // ── 每月第N周辅助 ─────────────────────────────────────
-function getWeekOfMonth(d) {
-  // 返回 d 是当月第几个"同星期X"
-  // 例：7月7日(周二) → 7月第1个周二 → 返回1
-  const weekday = d.getDay();
-  let count = 0;
-  for (let day = 1; day <= d.getDate(); day++) {
-    if (new Date(d.getFullYear(), d.getMonth(), day).getDay() === weekday) count++;
-  }
-  return count;
-}
+// 返回 d 是当月第几个"同星期X"，如7月7日(周二)→7月第1个周二→返回1
 function getNthWeekdayOfMonth(d) {
   const wd = d.getDay(); let count = 0;
   for (let day = 1; day <= d.getDate(); day++) {
@@ -553,7 +537,7 @@ function matchesRepeat(rt, d) {
     case 'monthly-workday':
       return d.getDay() !== 0 && d.getDay() !== 6 && getNthWorkdayOfMonth(d) === rt.monthWorkday;
     case 'monthly-week':
-      return d.getDay() === (rt.weekday !== null && rt.weekday !== undefined ? rt.weekday : 1) && getNthWeekdayOfMonth(d) === rt.monthWeek;
+      return d.getDay() === ((rt.weekday != null) ? rt.weekday : 1) && getNthWeekdayOfMonth(d) === rt.monthWeek;
     case 'monthly-weekday':
       return d.getDay() === rt.weekday && getNthWeekdayOfMonth(d) === rt.monthWeek;
     default:
@@ -1216,22 +1200,26 @@ if ('Notification' in window && Notification.permission === 'default') {
 }
 
 // ── 未完成事项自动结转 ────────────────────────────────
+// 只结转普通任务（非循环、非已结转、有标题、未完成）
+// force=true 时跳过"今天已检查"的限制，用于云端数据加载后强制重跑
 function carryOverUnfinished(force = false) {
   const today = todayDate();
   const todayKey = dateKey(today);
-  const lastCheckedKey = localStorage.getItem('carry_last_checked');
-  if (!force && lastCheckedKey === todayKey) return 0;
+  if (!force && localStorage.getItem('carry_last_checked') === todayKey) return 0;
   const pastKeys = Object.keys(tasks).filter(k => k < todayKey);
   let carried = 0;
   pastKeys.forEach(k => {
-    // 跳过：已结转的、循环任务的 done 覆盖记录（id 以 rep_ 开头）、空 title
     const unfinished = (tasks[k] || []).filter(t =>
-      !t.done && !t.carriedFrom && !t.repeat && !(t.id && t.id.startsWith('rep_')) && t.title
+      t.title &&        // 有标题
+      !t.done &&        // 未完成
+      !t.carriedFrom && // 非结转来源（避免链式结转）
+      !t.repeat &&      // 非循环任务 override 记录
+      !(t.id && t.id.startsWith('rep_')) // 非循环 done 记录
     );
     unfinished.forEach(t => {
       if (!tasks[todayKey]) tasks[todayKey] = [];
-      const alreadyCarried = tasks[todayKey].some(ct => ct.carriedFrom === t.id);
-      if (!alreadyCarried) {
+      // 避免重复结转同一任务
+      if (!tasks[todayKey].some(ct => ct.carriedFrom === t.id)) {
         tasks[todayKey].push({
           id: 'carry_' + t.id + '_' + todayKey,
           title: t.title, time: t.time, done: false,
@@ -1241,8 +1229,12 @@ function carryOverUnfinished(force = false) {
       }
     });
   });
-  if (carried > 0) saveLocal();
   localStorage.setItem('carry_last_checked', todayKey);
+  if (carried > 0) {
+    // 写本地
+    localStorage.setItem('tasks_v2', JSON.stringify(tasks));
+    localStorage.setItem('repeat_tasks_v2', JSON.stringify(repeatTasks));
+  }
   return carried;
 }
 
