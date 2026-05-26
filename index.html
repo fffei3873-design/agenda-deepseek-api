@@ -411,7 +411,7 @@ async function onLogin(user) {
   const fromCloud = await loadFromCloud();
   si.classList.remove('show');
   // 云端数据加载完后执行结转
-  const carriedCount = carryOverUnfinished();
+  const carriedCount = carryOverUnfinished(true); // 云端数据加载完后强制执行
   if (carriedCount > 0) {
     renderAll();
     showToast(`已将 ${carriedCount} 项未完成事项结转至今日`);
@@ -1216,11 +1216,11 @@ if ('Notification' in window && Notification.permission === 'default') {
 }
 
 // ── 未完成事项自动结转 ────────────────────────────────
-function carryOverUnfinished() {
+function carryOverUnfinished(force = false) {
   const today = todayDate();
   const todayKey = dateKey(today);
   const lastCheckedKey = localStorage.getItem('carry_last_checked');
-  if (lastCheckedKey === todayKey) return;
+  if (!force && lastCheckedKey === todayKey) return 0;
   const pastKeys = Object.keys(tasks).filter(k => k < todayKey);
   let carried = 0;
   pastKeys.forEach(k => {
