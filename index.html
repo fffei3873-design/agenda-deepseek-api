@@ -410,6 +410,14 @@ async function onLogin(user) {
   si.classList.add('show');
   const fromCloud = await loadFromCloud();
   si.classList.remove('show');
+  // 云端数据加载完后执行结转
+  const carriedCount = carryOverUnfinished();
+  if (carriedCount > 0) {
+    renderAll();
+    showToast(`已将 ${carriedCount} 项未完成事项结转至今日`);
+  } else if (fromCloud) {
+    renderAll();
+  }
   // 登录后把本地未同步的数据推上去
   if (!fromCloud && (Object.keys(tasks).length > 0 || repeatTasks.length > 0)) {
     syncToCloud().catch(() => {});
@@ -569,7 +577,10 @@ function getRepeatLabel(rt) {
 
 function getTasksForDate(d) {
   const key = dateKey(d);
-  const regular = tasks[key] ? tasks[key].filter(t => t.title || t.carriedFrom) : [];
+  // 只保留普通任务和结转任务，排除循环任务的 done 状态覆盖记录（rep_ 开头）
+  const regular = tasks[key] ? tasks[key].filter(t =>
+    (t.title || t.carriedFrom) && !(t.id && t.id.startsWith('rep_'))
+  ) : [];
   const repeating = repeatTasks
     .filter(rt => matchesRepeat(rt, d))
     .map(rt => ({
@@ -1213,7 +1224,10 @@ function carryOverUnfinished() {
   const pastKeys = Object.keys(tasks).filter(k => k < todayKey);
   let carried = 0;
   pastKeys.forEach(k => {
-    const unfinished = (tasks[k] || []).filter(t => !t.done && !t.carriedFrom);
+    // 跳过：已结转的、循环任务的 done 覆盖记录（id 以 rep_ 开头）、空 title
+    const unfinished = (tasks[k] || []).filter(t =>
+      !t.done && !t.carriedFrom && !t.repeat && !(t.id && t.id.startsWith('rep_')) && t.title
+    );
     unfinished.forEach(t => {
       if (!tasks[todayKey]) tasks[todayKey] = [];
       const alreadyCarried = tasks[todayKey].some(ct => ct.carriedFrom === t.id);
@@ -1234,10 +1248,10 @@ function carryOverUnfinished() {
 
 // ── Init ──────────────────────────────────────────────────
 loadLocal();
-const carriedCount = carryOverUnfinished();
+const localCarried = carryOverUnfinished();
 renderAll();
+if (localCarried > 0) setTimeout(() => showToast(`已将 ${localCarried} 项未完成事项结转至今日`), 500);
 initGcal();
-if (carriedCount > 0) setTimeout(() => showToast(`已将 ${carriedCount} 项未完成事项结转至今日`), 500);
 initAuth();
 
 // pre-fill modal on open
