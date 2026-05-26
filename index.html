@@ -293,14 +293,13 @@
 
 <script>
 const DAYS_CN = ['日','一','二','三','四','五','六'];
-const MONTHS_CN = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
 
 // ── State ──────────────────────────────────────────────
 let weekOffset = 0;
+let _aiParsing = false; // 防止并发 AI 请求
 let selectedDate = todayDate();
 let tasks = {};
 let repeatTasks = [];
-let accessToken = null;
 
 function todayDate() {
   const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate());
@@ -525,6 +524,8 @@ function matchesRepeat(rt, d) {
   if (d < s) return false;
   const type = rt.repeatType || 'weekly';
   switch (type) {
+    case 'daily':
+      return true;
     case 'weekly':
       return d.getDay() === rt.weekday;
     case 'biweekly':
@@ -546,6 +547,7 @@ function getRepeatLabel(rt) {
   const type = rt.repeatType || 'weekly';
   const DAYS = ['周日','周一','周二','周三','周四','周五','周六'];
   switch(type) {
+    case 'daily':        return '每天循环';
     case 'weekly':       return `每周${DAYS[rt.weekday]}循环`;
     case 'biweekly':     return `每两周${DAYS[rt.weekday]}循环`;
     case 'monthly-day':  return `每月第${rt.monthDay}天循环`;
@@ -612,97 +614,6 @@ function updateGcalUI(state) {
   }
 }
 
-// ── Sync to Google Calendar ───────────────────────────────
-async function syncTaskToGcal(task, dateForTask) {
-  if (!accessToken) { showToast('请先连接 Google Calendar'); return false; }
-  const dateStr = dateKey(dateForTask);
-  let resource;
-  if (task.repeat) {
-    const rruleDays = ['SU','MO','TU','WE','TH','FR','SA'];
-    const wd = rruleDays[dateForTask.getDay()];
-    if (task.time) {
-      const [h, m] = task.time.split(':').map(Number);
-      const endH = String(h + (m + 30 >= 60 ? 1 : 0)).padStart(2,'0');
-      const endM = String((m + 30) % 60).padStart(2,'0');
-      resource = {
-        summary: task.title,
-        start: { dateTime: `${dateStr}T${task.time}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        end: { dateTime: `${dateStr}T${endH}:${endM}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${wd}`],
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] }
-      };
-    } else {
-      resource = {
-        summary: task.title,
-        start: { date: dateStr }, end: { date: dateStr },
-        recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${wd}`],
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 540 }] }
-      };
-    }
-  } else {
-    if (task.time) {
-      const [h, m] = task.time.split(':').map(Number);
-      const endH = String(h + (m + 30 >= 60 ? 1 : 0)).padStart(2,'0');
-      const endM = String((m + 30) % 60).padStart(2,'0');
-      resource = {
-        summary: task.title,
-        start: { dateTime: `${dateStr}T${task.time}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        end: { dateTime: `${dateStr}T${endH}:${endM}:00`, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] }
-      };
-    } else {
-      resource = {
-        summary: task.title,
-        start: { date: dateStr }, end: { date: dateStr },
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 540 }] }
-      };
-    }
-  }
-  try {
-    const resp = await gapi.client.calendar.events.insert({ calendarId: 'primary', resource });
-    const gcalId = resp.result.id;
-    // mark synced
-    const key = dateKey(dateForTask);
-    if (!tasks[key]) tasks[key] = [];
-    if (task.repeatId) {
-      const rt = repeatTasks.find(r => r.id === task.repeatId);
-      if (rt) rt.gcalId = gcalId;
-      let ov = tasks[key].find(t => t.id === task.id);
-      if (!ov) { tasks[key].push({id: task.id, title: task.title, time: task.time, done: task.done, gcalId}); }
-      else ov.gcalId = gcalId;
-    } else {
-      const t = tasks[key].find(t => t.id === task.id);
-      if (t) t.gcalId = gcalId;
-    }
-    saveLocal();
-    return true;
-  } catch(e) {
-    console.error(e);
-    return false;
-  }
-}
-
-async function handleSyncOne(btn, task) {
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="border-top-color:var(--blue)"></span>';
-  const ok = await syncTaskToGcal(task, selectedDate);
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ti ti-calendar-check"></i>';
-  if (ok) { showToast(`✓ "${task.title}" 已同步`); renderAll(); }
-  else showToast('同步失败，请重试', 'err');
-}
-
-document.getElementById('sync-all-btn').onclick = async () => {
-  const btn = document.getElementById('sync-all-btn');
-  const tasks4day = getTasksForDate(selectedDate).filter(t => !t.gcalId);
-  if (!tasks4day.length) { showToast('当日所有事项已同步'); return; }
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 同步中…';
-  let ok = 0;
-  for (const t of tasks4day) { if (await syncTaskToGcal(t, selectedDate)) ok++; }
-  btn.disabled = false; btn.innerHTML = '<i class="ti ti-calendar-up"></i> 一键同步当日';
-  showToast(ok ? `✓ 已同步 ${ok} 项到 Google Calendar` : '同步失败，请重试', ok ? 'ok' : 'err');
-  renderAll();
-};
 
 // ── Render ────────────────────────────────────────────────
 function renderWeekStrip() {
@@ -755,12 +666,7 @@ function renderTasks() {
   tasks4day.forEach(task => {
     const tr = document.createElement('tr');
     tr.className = 'task-row' + (task.done ? ' done' : '');
-    const calIcon = task.gcalId
-      ? `<button class="icon-btn cal" disabled title="已同步"><i class="ti ti-calendar-check"></i></button>`
-      : accessToken
-        ? `<button class="icon-btn cal sync-one" title="同步到 Google Calendar"><i class="ti ti-calendar-plus"></i></button>`
-        : '';
-    // 备注列内容：循环标签 + 结转标签 + 可编辑输入
+    // 备注列内容：循环标签 + 结转标签
     const repeatTag = task.repeatLabel
       ? `<div class="note-tag note-tag-repeat">${task.repeatLabel}</div>`
       : '';
@@ -785,15 +691,12 @@ function renderTasks() {
       </td>
       <td class="td-actions">
         <div class="task-actions">
-          ${calIcon}
           <button class="icon-btn del-btn" title="删除"><i class="ti ti-trash"></i></button>
         </div>
       </td>`;
     tbody.appendChild(tr);
     tr.querySelector('.task-check').onclick = () => toggleDone(task.id, task.repeatId);
     tr.querySelector('.del-btn').onclick = () => deleteTask(task.id, task.repeatId);
-    const sb = tr.querySelector('.sync-one');
-    if (sb) sb.onclick = () => handleSyncOne(sb, task);
     tr.querySelector('.cat-input').onchange = e => updateTask(task.id, task.repeatId, 'category', e.target.value.trim());
     tr.querySelector('.dl-input').onchange = e => { updateTask(task.id, task.repeatId, 'deadline', e.target.value.trim()); renderTasks(); };
     tr.querySelector('.task-title-input').onchange = e => updateTask(task.id, task.repeatId, 'title', e.target.value.trim());
@@ -832,18 +735,36 @@ function toggleDone(id, repeatId) {
   const key = dateKey(selectedDate);
   if (!tasks[key]) tasks[key] = [];
   if (repeatId) {
+    // 循环任务完成状态
     const ov = tasks[key].find(t => t.id === id);
     if (ov) { ov.done = !ov.done; }
     else {
-      // 从 repeatTasks 找到原始数据补全 title
       const rt = repeatTasks.find(r => r.id === repeatId);
       tasks[key].push({ id, title: rt ? rt.title : '', time: rt ? rt.time : '', done: true, repeat: true });
     }
   } else {
     const t = tasks[key].find(t => t.id === id);
-    if (t) t.done = !t.done;
+    if (!t) { saveLocal(); renderAll(); return; }
+    const newDone = !t.done;
+    t.done = newDone;
+    // 同步所有关联任务（原始 + 所有结转副本）
+    syncRelatedTasks(t, newDone);
   }
   saveLocal(); renderAll();
+}
+
+// 勾选任一关联任务时，把所有关联记录（原始+各天结转副本）同步为相同完成状态
+function syncRelatedTasks(changedTask, done) {
+  // 找到"根 id"：如果自身是结转任务，根是 carriedFrom；否则根是自身 id
+  const rootId = changedTask.carriedFrom || changedTask.id;
+  // 遍历所有日期，找到所有关联记录并同步
+  Object.values(tasks).forEach(dayTasks => {
+    dayTasks.forEach(t => {
+      if (t.id === rootId || t.carriedFrom === rootId) {
+        t.done = done;
+      }
+    });
+  });
 }
 function deleteTask(id, repId) {
   if (repId) {
@@ -857,108 +778,108 @@ function deleteTask(id, repId) {
 }
 
 
-// ── 解析循环条件（备用，当前备注列为只读，暂未调用）────────────────────────
-async function parseRepeatCondition(text) {
-  const { anthropicKey, apiUrl, apiModel } = getConfig();
-  if (!anthropicKey) return null;
-  const prompt = `你是循环条件解析器。将以下循环描述解析为JSON（只返回JSON）：
-输入：「${text}」
-返回：{"repeatType":"weekly|biweekly|monthly-day|monthly-workday|monthly-week|monthly-weekday","weekday":0-6或null,"monthDay":数字或null,"monthWorkday":数字或null,"monthWeek":数字或null}
-示例：
-- "每周一" → repeatType:"weekly",weekday:1
-- "每两周三" → repeatType:"biweekly",weekday:3
-- "每月15号" → repeatType:"monthly-day",monthDay:15
-- "每月第3个工作日" → repeatType:"monthly-workday",monthWorkday:3
-- "每月第2周" → repeatType:"monthly-week",monthWeek:2,weekday:1
-- "每月第1个周二" → repeatType:"monthly-weekday",monthWeek:1,weekday:2`;
-  try {
-    const resp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + anthropicKey },
-      body: JSON.stringify({ model: apiModel, max_tokens: 100, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await resp.json();
-    const raw = data.choices ? data.choices[0].message.content : '';
-    return JSON.parse(raw.replace(/```json|```/g,'').trim());
-  } catch(e) { return null; }
+// ── AI Parse ──────────────────────────────────────────────
+// 从任意字符串中提取第一个合法 JSON 数组
+function extractJSON(raw) {
+  // 1. 去掉 markdown 代码块标记
+  let s = raw.replace(/```json|```/g, '').trim();
+  // 2. 尝试直接解析
+  try { const r = JSON.parse(s); return Array.isArray(r) ? r : [r]; } catch(e) {}
+  // 3. 提取第一个 [ ... ] 块
+  const start = s.indexOf('[');
+  const end = s.lastIndexOf(']');
+  if (start !== -1 && end > start) {
+    try { const r = JSON.parse(s.slice(start, end + 1)); return Array.isArray(r) ? r : [r]; } catch(e) {}
+  }
+  // 4. 提取第一个 { ... } 块（模型只返回了单个对象）
+  const os = s.indexOf('{');
+  const oe = s.lastIndexOf('}');
+  if (os !== -1 && oe > os) {
+    try { return [JSON.parse(s.slice(os, oe + 1))]; } catch(e) {}
+  }
+  return null;
 }
 
-function applyRepeatToTask(task, repeatInfo) {
-  const startDate = dateKey(selectedDate);
-  if (task.repeatId) {
-    // 更新已有循环任务
-    const rt = repeatTasks.find(r => r.id === task.repeatId);
-    if (rt) {
-      rt.repeatType = repeatInfo.repeatType;
-      rt.weekday = repeatInfo.weekday !== undefined ? repeatInfo.weekday : rt.weekday;
-      rt.monthDay = repeatInfo.monthDay || null;
-      rt.monthWorkday = repeatInfo.monthWorkday || null;
-      rt.monthWeek = repeatInfo.monthWeek || null;
-    }
-  } else {
-    // 普通任务升级为循环任务
-    const key = dateKey(selectedDate);
-    const newRt = {
-      id: task.id,
-      title: task.title, category: task.category||'', deadline: task.deadline||'',
-      time: task.time, startDate,
-      repeatType: repeatInfo.repeatType,
-      weekday: repeatInfo.weekday !== undefined ? repeatInfo.weekday : selectedDate.getDay(),
-      monthDay: repeatInfo.monthDay || null,
-      monthWorkday: repeatInfo.monthWorkday || null,
-      monthWeek: repeatInfo.monthWeek || null
-    };
-    repeatTasks.push(newRt);
-    // 从当天 tasks 中移除（交给循环逻辑接管）
-    if (tasks[key]) tasks[key] = tasks[key].filter(t => t.id !== task.id);
-  }
-  saveLocal();
-}
-// ── AI Parse ──────────────────────────────────────────────
 async function parseWithAI(text) {
-  const { anthropicKey } = getConfig();
+  const { anthropicKey, apiUrl, apiModel } = getConfig();
   if (!anthropicKey) { showToast('请先点击"配置 API"填写 Key', 'err'); return null; }
   const today = todayDate();
   const prompt = `你是日程解析助手。当前：${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日（周${DAYS_CN[today.getDay()]}）。
 用户输入：「${text}」
-用户可能一次描述多个事项，请全部识别，并自动归类为三列。返回JSON数组（只返回JSON数组，不要有其他内容）：
-[{"title":"提醒事项（核心描述）","category":"归类","deadline":"截止时间","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
-规则：
-- 每个事项单独一个对象，即使只有一个也返回数组
-- title只写核心事项，不含时间和类别信息
-- category：只有用户明确说了归类（如"市场部"、"项目A"等），才填写；否则填"/"
-- deadline：只有用户明确说了deadline或截止时间，才填写（YYYY-MM-DD或YYYY-MM-DD HH:MM格式）；否则填"/"
-- time是提醒/事件时间，如"周五下午两点汇报"，date=本周五日期，time="14:00"，deadline="/"（除非用户说"截止"）
-- repeat说明：用repeatType字段区分循环类型，可选值：
-  * "weekly"：每周周X → weekday=0-6
-  * "biweekly"：每两周周X → weekday=0-6
-  * "monthly-day"：每月第X天 → monthDay=日期数字(1-31)
-  * "monthly-workday"：每月第X个工作日 → monthWorkday=数字
-  * "monthly-week"：每月第X周（未指定星期则默认周一） → monthWeek=1-5，weekday默认1
-  * "monthly-weekday"：每月第X个周Y → monthWeek=X，weekday=Y的数字
-- repeat=true时必须填repeatType，同时填对应的weekday/monthDay/monthWorkday/monthWeek
-- 无日期→今天(${dateKey(today)})；"周四"→本周四对应日期；"5.29"→当年5月29日
-- "3点"=15:00，"下午3点"=15:00，"上午10点"=10:00`;
-  const { apiUrl, apiModel } = getConfig();
-  try {
-    const resp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + anthropicKey },
-      body: JSON.stringify({ model: apiModel, max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await resp.json();
-    const raw = data.choices ? data.choices[0].message.content : '';
-    const cleaned = raw.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(cleaned);
-    // 统一返回数组
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch(e) { return null; }
+返回JSON数组（只返回JSON数组，不要有其他任何内容）：
+[{"title":"核心事项","category":"/","deadline":"/","date":"YYYY-MM-DD或null","time":"HH:MM或null","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+
+字段规则：
+- title：核心事项描述，不含时间/类别
+- category：用户明确说了才填，否则填"/"
+- deadline：用户明确说"截止"才填YYYY-MM-DD格式，否则填"/"
+- date：无日期→今天(${dateKey(today)})；"周X"→本周对应日期；"下周X"→下周对应；"5.29"→当年5月29日
+- time："3点"=15:00，"上午X点"=X:00，"下午X点"=(X+12):00
+
+循环规则（含"每天/每周/每两周/每月"等词时，repeat必须=true）：
+repeatType取值及对应字段：
+- "daily"    每天循环           → 其余字段null
+- "weekly"   每周周X循环        → weekday=1(周一)~6(周六),0(周日)
+- "biweekly" 每两周周X循环      → weekday同上
+- "monthly-day"      每月X号    → monthDay=1~31
+- "monthly-workday"  每月第X个工作日 → monthWorkday=数字
+- "monthly-week"     每月第X周  → monthWeek=1~5，weekday默认1(周一)
+- "monthly-weekday"  每月第X个周Y → monthWeek=X，weekday=Y
+
+示例（严格按此格式输出）：
+"每天检查日历" → [{"title":"检查日历","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"daily","weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+"每周一检查日历" → [{"title":"检查日历","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"weekly","weekday":1,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+"每两周三开会" → [{"title":"开会","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"biweekly","weekday":3,"monthDay":null,"monthWorkday":null,"monthWeek":null}]
+"每月15号提交报告" → [{"title":"提交报告","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-day","weekday":null,"monthDay":15,"monthWorkday":null,"monthWeek":null}]
+"每月第3个工作日报销" → [{"title":"报销","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-workday","weekday":null,"monthDay":null,"monthWorkday":3,"monthWeek":null}]
+"每月第2周开会" → [{"title":"开会","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-week","weekday":1,"monthDay":null,"monthWorkday":null,"monthWeek":2}]
+"每月第1个周二填报" → [{"title":"填报","category":"/","deadline":"/","date":null,"time":null,"repeat":true,"repeatType":"monthly-weekday","weekday":2,"monthDay":null,"monthWorkday":null,"monthWeek":1}]
+"5.29号3点交论文" → [{"title":"交论文","category":"/","deadline":"/","date":"${today.getFullYear()}-05-29","time":"15:00","repeat":false,"repeatType":null,"weekday":null,"monthDay":null,"monthWorkday":null,"monthWeek":null}]`;
+
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + anthropicKey },
+        body: JSON.stringify({ model: apiModel, max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        console.warn(`AI 请求失败 (第${attempt}次): HTTP ${resp.status}`, err);
+        if (attempt < MAX_RETRIES) { await new Promise(r => setTimeout(r, 800 * attempt)); continue; }
+        return null;
+      }
+      const data = await resp.json();
+      const raw = data.choices?.[0]?.message?.content || '';
+      const result = extractJSON(raw);
+      if (result && result.length > 0) return result;
+      console.warn(`AI 返回内容无法解析 (第${attempt}次):`, raw);
+    } catch(e) {
+      console.warn(`AI 请求异常 (第${attempt}次):`, e.message);
+    }
+    if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 600 * attempt + Math.random() * 400));
+  }
+  return null;
+}
+
+// 找到循环任务从今天起最近一个出现的日期（最多往后找 35 天）
+function findNextOccurrence(rt) {
+  const today = todayDate();
+  for (let i = 0; i <= 35; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    if (matchesRepeat(rt, d)) return d;
+  }
+  return today; // fallback
 }
 
 async function addTask() {
   const input = document.getElementById('task-input');
   const text = input.value.trim();
   if (!text) return;
+  if (_aiParsing) { showToast('请等待上一条解析完成', 'err'); return; }
+  _aiParsing = true;
   input.value = ''; input.disabled = true;
   document.getElementById('send-btn').disabled = true;
   const statusEl = document.getElementById('ai-status');
@@ -967,8 +888,9 @@ async function addTask() {
 
   const parsedList = await parseWithAI(text);
   if (!parsedList || !parsedList.length) {
+    _aiParsing = false;
     statusEl.className = 'status-bar show err';
-    statusEl.innerHTML = '<i class="ti ti-x"></i><span>解析失败，请重试或检查 API Key</span>';
+    statusEl.innerHTML = '<i class="ti ti-x"></i><span>解析失败，请稍后重试</span>';
     input.disabled = false; document.getElementById('send-btn').disabled = false;
     setTimeout(() => statusEl.className='status-bar', 3500);
     return;
@@ -978,17 +900,22 @@ async function addTask() {
   parsedList.forEach((parsed, idx) => {
     const id = 'task_' + Date.now() + '_' + idx;
     if (parsed.repeat) {
-      const startDate = parsed.date || dateKey(todayDate());
+      // startDate：用今天，让循环从今天起生效（不漏过去）
+      const startDate = dateKey(todayDate());
       const rt = { id, title: parsed.title, category: parsed.category||'', deadline: parsed.deadline||'',
         time: parsed.time, startDate,
         repeatType: parsed.repeatType || 'weekly',
-        weekday: (parsed.weekday !== null && parsed.weekday !== undefined) ? parsed.weekday : (parsed.repeatType === 'monthly-week' ? 1 : parseDateKey(startDate).getDay()),
+        weekday: (parsed.weekday !== null && parsed.weekday !== undefined) ? parsed.weekday :
+                   (['monthly-week'].includes(parsed.repeatType) ? 1 :
+                   ['daily','monthly-day','monthly-workday'].includes(parsed.repeatType) ? null :
+                   parseDateKey(startDate).getDay()),
         monthDay: parsed.monthDay || null,
         monthWorkday: parsed.monthWorkday || null,
         monthWeek: parsed.monthWeek || null
       };
       repeatTasks.push(rt);
-      lastDate = parseDateKey(startDate);
+      // 跳转到最近一个匹配日期（今天或未来7天内找下一个）
+      lastDate = findNextOccurrence(rt);
       msgs.push(getRepeatLabel(rt) + '：' + parsed.title);
     } else {
       const targetDate = parsed.date ? parseDateKey(parsed.date) : todayDate();
@@ -999,13 +926,17 @@ async function addTask() {
       msgs.push(`${targetDate.getMonth()+1}/${targetDate.getDate()}${parsed.time ? ' '+parsed.time : ''}：${parsed.title}`);
     }
   });
-  // 跳转到最后一个事项的日期
+  // 跳转到最后一个事项的日期所在周
   if (lastDate) {
     selectedDate = lastDate;
-    const diff = Math.floor((lastDate - todayDate()) / (7*24*3600*1000));
-    weekOffset = diff >= 0 ? Math.floor(diff/7) : -Math.ceil(-diff/7);
+    const today = todayDate();
+    // 计算 lastDate 所在的周相对于今天的偏移
+    const todayMon = new Date(today); todayMon.setDate(today.getDate() - today.getDay() + 1);
+    const targetMon = new Date(lastDate); targetMon.setDate(lastDate.getDate() - lastDate.getDay() + 1);
+    weekOffset = Math.round((targetMon - todayMon) / (7*24*3600*1000));
   }
   saveLocal();
+  _aiParsing = false;
   const total = parsedList.length;
   statusEl.className = 'status-bar show ok';
   statusEl.innerHTML = `<i class="ti ti-check"></i><span>已添加 ${total} 项：${msgs.join('；')}</span>`;
